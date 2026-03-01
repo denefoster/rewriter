@@ -8,22 +8,23 @@ import os
 import re
 import checkdmarc
 
+forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
+forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
+local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
+listening_port = os.environ.get("LISTENING_PORT", "8800")
+log_level = os.environ.get("LOG_LEVEL", "DEBUG")
+mailmatch = re.compile(
+    r"[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+(?:\.[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+)*=40(?:[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?",
+    re.IGNORECASE,
+)
+
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.log_level,
     style="{",
     datefmt="%Y-%m-%d %H:%M:%S",
     format="{asctime} {levelname} {filename}:{lineno}: {message}",
 )
 
-
-forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
-forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
-local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
-listening_port = os.environ.get("LISTENING_PORT", "8800")
-mailmatch = re.compile(
-    r"[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+(?:\.[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+)*=40(?:[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?",
-    re.IGNORECASE,
-)
 
 
 def check_dmarc(email_addr):
