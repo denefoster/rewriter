@@ -107,10 +107,10 @@ class EnvelopeMilter(Milter.Base):
                 logging.info(
                     f"[{self.id}] Unwrapped from {env_to_addr} to {unwrapped_addr}"
                 )
-                self.delrcpt(self.mail_to)
+                self.delrcpt(env_to_addr)
                 self.addrcpt(f"<{unwrapped_addr}>")
                 return Milter.ACCEPT
-            elif check_local(self.mail_to.split("@")[-1]):
+            elif check_local(env_to_addr.split("@")[-1]):
                 logging.info(
                     f"[{self.id}] Local delivery, no action needed Envelope-From: {env_from_addr} Evelope-To: {env_to_addr}"
                 )
