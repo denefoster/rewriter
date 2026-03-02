@@ -113,7 +113,12 @@ class EnvelopeMilter(Milter.Base):
                 return Milter.ACCEPT
             elif check_local(env_to_addr.split("@")[-1].replace(">", "")):
                 logging.info(
-                    f"[{self.id}] Local delivery, no action needed Envelope-From: {env_from_addr} Envelope-To: {env_to_addr}"
+                    f"[{self.id}] Local recipient, no action needed Envelope-From: {env_from_addr} Envelope-To: {env_to_addr}"
+                )
+                return Milter.ACCEPT
+            elif check_local(hdr_from_addr.split("@")[-1].replace(">", "")):
+                logging.info(
+                    f"[{self.id}] Local source, no action needed Envelope-From: {env_from_addr} Envelope-To: {env_to_addr}"
                 )
                 return Milter.ACCEPT
             else:
