@@ -165,5 +165,6 @@ def main():
 if __name__ == "__main__":
     logging.info(f"Starting, listneing on {listening_port}")
     logging.info(f"Local domains are: {local_domains}")
+    logging.info(f"Also Local domains are: {local_domains}")
 
     main()
