@@ -112,6 +112,8 @@ class EnvelopeMilter(Milter.Base):
                 self.addrcpt(f"<{unwrapped_addr}>")
                 return Milter.ACCEPT
             elif check_local(env_to_addr.split("@")[-1].replace(">", "")):
+                if email.utils.parseaddr(env_to_addr)[1] == hdr_to_addr:
+                    logging.info(f"[{self.id}] rewrite should go here")
                 logging.info(
                     f"[{self.id}] Local recipient, no action needed Envelope-From: {env_from_addr} Envelope-To: {env_to_addr}"
                 )
@@ -170,6 +172,5 @@ def main():
 if __name__ == "__main__":
     logging.info(f"Starting, listneing on {listening_port}")
     logging.info(f"Local domains are: {local_domains}")
-    logging.info(f"Also Local domains are: {local_domains}")
 
     main()
