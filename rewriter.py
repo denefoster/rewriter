@@ -27,10 +27,9 @@ logging.basicConfig(
 )
 
 
-
 def check_dmarc(email_addr):
     matches = ["reject", "quarantine"]
-    domain = email_addr.split("@")[1].replace('>', '')
+    domain = email_addr.split("@")[1].replace(">", "")
     dmarc_status = checkdmarc.check_dmarc(domain)
     if "tags" in dmarc_status:
         if any(x in dmarc_status["tags"]["p"]["value"] for x in matches):
@@ -112,9 +111,9 @@ class EnvelopeMilter(Milter.Base):
                 self.delrcpt(env_to_addr)
                 self.addrcpt(f"<{unwrapped_addr}>")
                 return Milter.ACCEPT
-            elif check_local(env_to_addr.split("@")[-1]):
+            elif check_local(hdr_from_addr.split("@")[-1].replace(">", "")):
                 logging.info(
-                    f"[{self.id}] Local delivery, no action needed Envelope-From: {env_from_addr} Evelope-To: {env_to_addr}"
+                    f"[{self.id}] Local delivery, no action needed Envelope-From: {env_from_addr} Envelope-To: {env_to_addr}"
                 )
                 return Milter.ACCEPT
             else:
