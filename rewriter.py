@@ -130,7 +130,6 @@ class EnvelopeMilter(Milter.Base):
                 logging.info(
                     f"[{self.id}] List fanout, Header-From: {hdr_from_addr} Envelope-To: {env_to_addr}"
                 )
-                # TODO rewrite here
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
@@ -157,7 +156,6 @@ class EnvelopeMilter(Milter.Base):
                 logging.info(
                     f"[{self.id}] Alias delivery Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                 )
-                # TODO rewrite here
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
@@ -182,7 +180,7 @@ class EnvelopeMilter(Milter.Base):
             # scenario 9
             else:
                 logging.info(
-                    f"[{self.id}] Header-From is {hdr_from_addr} Header-To is {hdr_to_addr}"
+                    f"[{self.id}] Fall through"
                 )
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
