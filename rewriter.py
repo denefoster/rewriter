@@ -40,7 +40,7 @@ def check_dmarc(email_addr):
 
 def check_spf(email_addr):
     matches = ["softfail", "fail"]
-    domain = email_addr.split("@")[1].replace(">", "")
+    domain = email_addr.split("@")[1]
     spf_status = checkdmarc.check_spf(domain)
     if "parsed" in spf_status:
         if any(x in spf_status["parsed"]["all"] for x in matches):
@@ -142,7 +142,6 @@ class EnvelopeMilter(Milter.Base):
                     f"[{self.id}] List fanout, Header-From: {hdr_from_addr} Envelope-To: {env_to_addr}"
                 )
                 if check_dmarc(hdr_from_addr):
-                    f"[{self.id}] DMARC fail Header-From: {hdr_from_addr}"
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
                     )
@@ -158,13 +157,6 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(
                         f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
                     )
-                    return Milter.ACCEPT
-                elif check_spf(hdr_from_addr):
-                    f"[{self.id}] SPF fail Envelope-From: {env_from_addr}"
-                    logging.info(
-                        f"[{self.id}] Envelope-From changed from {env_from_addr} to {forwarding_addr}"
-                    )
-                    self.chgfrom(forwarding_addr)
                     return Milter.ACCEPT
                 else:
                     logging.info(
@@ -177,7 +169,6 @@ class EnvelopeMilter(Milter.Base):
                     f"[{self.id}] Alias delivery Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                 )
                 if check_dmarc(hdr_from_addr):
-                    f"[{self.id}] DMARC fail Header-From: {hdr_from_addr}"
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
                     )
@@ -194,18 +185,11 @@ class EnvelopeMilter(Milter.Base):
                         f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
                     )
                     return Milter.ACCEPT
-                elif check_spf(hdr_from_addr):
-                    f"[{self.id}] SPF fail Envelope-From: {env_from_addr}"
-                    logging.info(
-                        f"[{self.id}] Envelope-From changed from {env_from_addr} to {forwarding_addr}"
-                    )
-                    self.chgfrom(forwarding_addr)
-                    return Milter.ACCEPT
                 else:
                     logging.info(
                         f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
                     )
-                return Milter.ACCEPT
+                    return Milter.ACCEPT
             # no scenario match
             else:
                 logging.info(f"[{self.id}] Fall through")
@@ -225,12 +209,12 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(
                         f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
                     )
+                    return Milter.ACCEPT
                 else:
                     logging.info(
                         f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
                     )
-
-                return Milter.ACCEPT
+                    return Milter.ACCEPT
 
         except Exception as e:
             logging.info(f"[{self.id}] ERROR writing log: {e}")
