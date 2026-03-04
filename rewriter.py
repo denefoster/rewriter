@@ -157,12 +157,16 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(
                         f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
                     )
-                    return Milter.ACCEPT
+                elif check_spf(hdr_from_addr):
+                    logging.info(
+                        f"[{self.id}] SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
+                    )
+                    self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
                         f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
                     )
-                    return Milter.ACCEPT
+                return Milter.ACCEPT
             # scenario 5
             elif check_local(env_to_addr) and env_to_addr != hdr_to_addr:
                 logging.info(
@@ -184,12 +188,16 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(
                         f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
                     )
-                    return Milter.ACCEPT
+                elif check_spf(hdr_from_addr):
+                    logging.info(
+                        f"[{self.id}] SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
+                    )
+                    self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
                         f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
                     )
-                    return Milter.ACCEPT
+                return Milter.ACCEPT
             # no scenario match
             else:
                 logging.info(f"[{self.id}] Fall through")
@@ -209,12 +217,16 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(
                         f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
                     )
-                    return Milter.ACCEPT
+                elif check_spf(hdr_from_addr):
+                    logging.info(
+                        f"[{self.id}] SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
+                    )
+                    self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
                         f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
                     )
-                    return Milter.ACCEPT
+                return Milter.ACCEPT
 
         except Exception as e:
             logging.info(f"[{self.id}] ERROR writing log: {e}")
