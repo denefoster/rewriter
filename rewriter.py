@@ -137,36 +137,36 @@ class EnvelopeMilter(Milter.Base):
                 )
                 return Milter.ACCEPT
             # scenario 4
-            elif hdr_from_addr == env_to_addr:
-                logging.info(
-                    f"[{self.id}] List fanout, Header-From: {hdr_from_addr} Envelope-To: {env_to_addr}"
-                )
-                if check_dmarc(hdr_from_addr):
-                    new_hdr_from_addr = (
-                        f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
-                    )
-                    self.chgfrom(forwarding_addr)
-                    self.chgheader(
-                        "From",
-                        0,
-                        new_hdr_from_addr,
-                    )
-                    logging.info(
-                        f"[{self.id}] Envelope-From changed from {env_from_addr} to {forwarding_addr}"
-                    )
-                    logging.info(
-                        f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
-                    )
-                elif check_spf(hdr_from_addr):
-                    logging.info(
-                        f"[{self.id}] SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
-                    )
-                    self.chgfrom(forwarding_addr)
-                else:
-                    logging.info(
-                        f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
-                    )
-                return Milter.ACCEPT
+#            elif hdr_from_addr == env_to_addr:
+#                logging.info(
+#                    f"[{self.id}] List fanout, Header-From: {hdr_from_addr} Envelope-To: {env_to_addr}"
+#                )
+#                if check_dmarc(hdr_from_addr):
+#                    new_hdr_from_addr = (
+#                        f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
+#                    )
+#                    self.chgfrom(forwarding_addr)
+#                    self.chgheader(
+#                        "From",
+#                        0,
+#                        new_hdr_from_addr,
+#                    )
+#                    logging.info(
+#                        f"[{self.id}] Envelope-From changed from {env_from_addr} to {forwarding_addr}"
+#                    )
+#                    logging.info(
+#                        f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
+#                    )
+#                elif check_spf(hdr_from_addr):
+#                    logging.info(
+#                        f"[{self.id}] SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
+#                    )
+#                    self.chgfrom(forwarding_addr)
+#                else:
+#                    logging.info(
+#                        f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
+#                    )
+#                return Milter.ACCEPT
             # scenario 5
             elif check_local(env_to_addr) and env_to_addr != hdr_to_addr:
                 logging.info(
