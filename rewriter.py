@@ -136,37 +136,6 @@ class EnvelopeMilter(Milter.Base):
                     f"[{self.id}] List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr}"
                 )
                 return Milter.ACCEPT
-            # scenario 4
-            elif hdr_from_addr == env_to_addr:
-                logging.info(
-                    f"[{self.id}] List fanout, Header-From: {hdr_from_addr} Envelope-To: {env_to_addr}"
-                )
-                if check_dmarc(hdr_from_addr):
-                    new_hdr_from_addr = (
-                        f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
-                    )
-                    self.chgfrom(forwarding_addr)
-                    self.chgheader(
-                        "From",
-                        0,
-                        new_hdr_from_addr,
-                    )
-                    logging.info(
-                        f"[{self.id}] Envelope-From changed from {env_from_addr} to {forwarding_addr}"
-                    )
-                    logging.info(
-                        f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
-                    )
-                elif check_spf(hdr_from_addr):
-                    logging.info(
-                        f"[{self.id}] SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
-                    )
-                    self.chgfrom(forwarding_addr)
-                else:
-                    logging.info(
-                        f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
-                    )
-                return Milter.ACCEPT
             # scenario 5
             elif check_local(env_to_addr) and env_to_addr != hdr_to_addr:
                 logging.info(
@@ -174,6 +143,9 @@ class EnvelopeMilter(Milter.Base):
                 )
                 for addr in self.header_to.split(','):
                     if check_local(addr):
+                        logging.info(
+                            f"[{self.id}] One address of many is local, dont rewrite Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
+                        )
                         return Milter.ACCEPT
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
