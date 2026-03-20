@@ -136,7 +136,7 @@ class EnvelopeMilter(Milter.Base):
                     f"[{self.id}] List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr}"
                 )
                 return Milter.ACCEPT
-            # scenario 5
+            # scenario 4
             elif check_local(env_to_addr) and env_to_addr != hdr_to_addr:
                 logging.info(
                     f"[{self.id}] Alias delivery Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
