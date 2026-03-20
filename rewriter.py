@@ -172,6 +172,9 @@ class EnvelopeMilter(Milter.Base):
                 logging.info(
                     f"[{self.id}] Alias delivery Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                 )
+                for addr in self.header_to.split(','):
+                    if check_local(addr):
+                        return Milter.ACCEPT
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
