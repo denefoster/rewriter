@@ -141,24 +141,18 @@ class EnvelopeMilter(Milter.Base):
                 logging.info(
                     f"[{self.id}] Multiple addresses, Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                 )
+                logging.info(
+                    f"[{self.id}] Multiple addresses, OG Envelope-To: {self.mail_to} OG Header-To: {self.header_to}"
+                )
+
                 for addr in self.header_to.split(','):
                     if check_local(addr):
                         if addr == env_to_addr:
                           logging.info(
                               f"[{self.id}] This address is local, dont rewrite from; Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                           )
-                          self.chgheader(
-                              "To",
-                              0,
-                              self.header_to
-                          )
                           return Milter.ACCEPT
                         else:
-                          self.chgheader(
-                              "To",
-                              0,
-                              self.header_to
-                          )
                           logging.info(
                               f"[{self.id}] This address is a remote alias delivery Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                           )
