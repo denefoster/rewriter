@@ -150,7 +150,7 @@ class EnvelopeMilter(Milter.Base):
                           self.chgheader(
                               "To",
                               0,
-                              self.header_to
+                              self.mail_to
                           )
 
                           return Milter.ACCEPT
