@@ -147,6 +147,12 @@ class EnvelopeMilter(Milter.Base):
                           logging.info(
                               f"[{self.id}] This address is local, dont rewrite from; Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                           )
+                          self.chgheader(
+                              "To",
+                              0,
+                              self.header_to
+                          )
+
                           return Milter.ACCEPT
                         else:
                           logging.info(
