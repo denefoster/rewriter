@@ -160,12 +160,12 @@ class EnvelopeMilter(Milter.Base):
                 return Milter.ACCEPT
             # scenario 2
             #elif check_local(env_to_addr) and env_to_addr == hdr_to_addr:
-            elif check_local(env_to_addr) and len(test_virtual_alias(env_to_addr) == 0 ):
+            elif check_local(env_to_addr) and test_virtual_alias(env_to_addr):
                 logging.info(
                     f"[{self.id}] Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {all_hdr_to_addr}"
                 )
                 return Milter.ACCEPT
-            elif check_local(env_to_addr) and len(test_virtual_alias(env_to_addr) == 1 ):
+            elif check_local(env_to_addr) and test_virtual_alias(env_to_addr):
                 logging.info(
                     f"[{self.id}] Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {all_hdr_to_addr}"
                 )
