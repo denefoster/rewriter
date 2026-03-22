@@ -9,8 +9,8 @@ import re
 import sys
 import checkdmarc
 
-import psycopg
 from psycopg_pool import ConnectionPool
+import psycopg
 
 
 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
@@ -33,39 +33,30 @@ logging.basicConfig(
 )
 
 
-def get_db_pool(config_fragment: dict, cache_key: None) -> ConnectionPool:
-  global pool_cache
-
-  if not cache_key or cache_key not in pool_cache:
-    try:
-      pool = ConnectionPool(kwargs={
-        "dbname": os.getenv("DB_NAME", "postfix"),
-        "host": os.getenv("DB_HOST", "localhost"),
-        "user": os.getenv("DB_USER", "postgres"),
-        "password": os.getenv("DB_PASSWORD", "postgres"),
-        "port": os.getenv("DB_PORT", "5432")
-      })
-    except psycopg.OperationalError as e:
-      print(f"The error '{e}' occurred")
-      logging.info(f"DB Error: {e}")
-      raise e
-      sys.exit(1)
-
-    pool.open(wait=True)
-
-    if cache_key:
-      pool_cache[cache_key] = pool
-      return pool
-
-    else:
-        return pool_cache[cache_key]
+def get_db_pool() -> ConnectionPool:
+  try:
+    pool = ConnectionPool(kwargs={
+      "dbname": os.getenv("DB_NAME", "postfix"),
+      "host": os.getenv("DB_HOST", "localhost"),
+      "user": os.getenv("DB_USER", "postgres"),
+      "password": os.getenv("DB_PASSWORD", "postgres"),
+      "port": os.getenv("DB_PORT", "5432")
+    })
+  except psycopg.OperationalError as e:
+    logging.info(f"DB Error: {e}")
+    raise e
+    sys.exit(1)
+  pool.open(wait=True)
+  return pool
 
 
 def test_virtual_alias(email_addr):
-    with get_db_pool() as conn:
-      query = f"SELECT email FROM virtual WHERE email ({email_addr})"
-    conn.execute(query, email_addr)
-    return True
+    with get_db_pool() as pool:
+      with pool.connection() as connection:
+        with connection.cursor() as cur:
+          cur.execute("SELECT email from virtual where email = %s", (email_addr,))
+          result = cur.fetchall()
+    return result
 
 def check_dmarc(email_addr):
     matches = ["reject", "quarantine"]
@@ -152,11 +143,14 @@ class EnvelopeMilter(Milter.Base):
             hdr_from_name, hdr_from_addr = email.utils.parseaddr(self.header_from)
             env_from_addr = email.utils.parseaddr(self.mail_from)[1]
             hdr_to_addr = email.utils.parseaddr(self.header_to)[1]
+            all_hdr_to_addr = []
+            for addr in self.header_to.split(', '):
+                all_hdr_to_addr.append(addr)[1]
             env_to_addr = email.utils.parseaddr(self.mail_to)[1]
             # scenario 1
             if unwrapped_addr := check_wrapped(env_to_addr, forwarding_domain):
                 logging.info(
-                    f"[{self.id}] Header from: {hdr_from_addr} is remote, Header To: {hdr_to_addr} is wrapped local"
+                    f"[{self.id}] Header from: {hdr_from_addr} is remote, Header To: {all_hdr_to_addr} is wrapped local"
                 )
                 logging.info(
                     f"[{self.id}] Unwrapped from {env_to_addr} to {unwrapped_addr}"
@@ -165,34 +159,16 @@ class EnvelopeMilter(Milter.Base):
                 self.addrcpt(f"<{unwrapped_addr}>")
                 return Milter.ACCEPT
             # scenario 2
-            elif check_local(env_to_addr) and env_to_addr == hdr_to_addr:
+            #elif check_local(env_to_addr) and env_to_addr == hdr_to_addr:
+            elif check_local(env_to_addr) and len(test_virtual_alias(env_to_addr) == 0 ):
                 logging.info(
-                    f"[{self.id}] Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
+                    f"[{self.id}] Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {all_hdr_to_addr}"
                 )
                 return Milter.ACCEPT
-            # scenario 3
-            elif check_local(env_from_addr) and check_local(hdr_from_addr):
+            elif check_local(env_to_addr) and len(test_virtual_alias(env_to_addr) == 1 ):
                 logging.info(
-                    f"[{self.id}] List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr}"
+                    f"[{self.id}] Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {all_hdr_to_addr}"
                 )
-                return Milter.ACCEPT
-            # scenario 4
-            elif check_local(env_to_addr) and env_to_addr != hdr_to_addr:
-                logging.info(
-                    f"[{self.id}] Multiple addresses, Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
-                )
-                for addr in self.header_to.split(','):
-                    if check_local(addr):
-                        if addr == env_to_addr:
-                          logging.info(
-                              f"[{self.id}] This address is local, dont rewrite from; Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
-                          )
-                          return Milter.ACCEPT
-                        else:
-                          logging.info(
-                              f"[{self.id}] This address is a remote alias delivery Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
-                          )
-
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
@@ -219,6 +195,55 @@ class EnvelopeMilter(Milter.Base):
                         f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
                     )
                 return Milter.ACCEPT
+            # scenario 3
+            elif check_local(env_from_addr) and check_local(hdr_from_addr):
+                logging.info(
+                    f"[{self.id}] List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr}"
+                )
+                return Milter.ACCEPT
+            # scenario 4
+                #elif check_local(env_to_addr) and env_to_addr != hdr_to_addr:
+                #    logging.info(
+                #        f"[{self.id}] Multiple addresses, Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
+                #    )
+                #    for addr in self.header_to.split(','):
+                #        if check_local(addr):
+                #            if addr == env_to_addr:
+                #              logging.info(
+                #                  f"[{self.id}] This address is local, dont rewrite from; Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
+                #              )
+                #              return Milter.ACCEPT
+                #            else:
+                #              logging.info(
+                #                  f"[{self.id}] This address is a remote alias delivery Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
+                #              )
+
+                #    if check_dmarc(hdr_from_addr):
+                #        new_hdr_from_addr = (
+                #            f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
+                #        )
+                #        self.chgfrom(forwarding_addr)
+                #        self.chgheader(
+                #            "From",
+                #            0,
+                #            new_hdr_from_addr,
+                #        )
+                #        logging.info(
+                #            f"[{self.id}] Envelope-From changed from {env_from_addr} to {forwarding_addr}"
+                #        )
+                #        logging.info(
+                #            f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
+                #        )
+                #    elif check_spf(hdr_from_addr):
+                #        logging.info(
+                #            f"[{self.id}] SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
+                #        )
+                #        self.chgfrom(forwarding_addr)
+                #    else:
+                #        logging.info(
+                #            f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
+                #        )
+                #    return Milter.ACCEPT
             # no scenario match
             else:
                 logging.info(f"[{self.id}] Fall through")
