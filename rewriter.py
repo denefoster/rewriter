@@ -142,10 +142,10 @@ class EnvelopeMilter(Milter.Base):
 
             hdr_from_name, hdr_from_addr = email.utils.parseaddr(self.header_from)
             env_from_addr = email.utils.parseaddr(self.mail_from)[1]
-            hdr_to_addr = email.utils.parseaddr(self.header_to)[1]
-            all_hdr_to_addr = []
-            for addr in self.header_to.split(', '):
-                all_hdr_to_addr.append(addr)[1]
+            all_hdr_to_addr = email.utils.parseaddr(self.header_to)[1]
+            #all_hdr_to_addr = []
+            #for addr in self.header_to.split(', '):
+            #    all_hdr_to_addr.append(addr)[1]
             env_to_addr = email.utils.parseaddr(self.mail_to)[1]
             # scenario 1
             if unwrapped_addr := check_wrapped(env_to_addr, forwarding_domain):
