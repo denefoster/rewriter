@@ -6,13 +6,19 @@ import Milter
 import email.utils
 import os
 import re
+import sys
 import checkdmarc
+
+import psycopg
+from psycopg_pool import ConnectionPool
+
 
 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 listening_port = os.environ.get("LISTENING_PORT", "8800")
 log_level = os.environ.get("LOG_LEVEL", "DEBUG")
+pool_cache: dict[ConnectionPool] = {}
 
 mailmatch = re.compile(
     r"[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+(?:\.[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+)*=40(?:[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?",
@@ -26,6 +32,40 @@ logging.basicConfig(
     format="{asctime} {levelname} {filename}:{lineno}: {message}",
 )
 
+
+def get_db_pool(config_fragment: dict, cache_key: None) -> ConnectionPool:
+  global pool_cache
+
+  if not cache_key or cache_key not in pool_cache:
+    try:
+      pool = ConnectionPool(kwargs={
+        "dbname": os.getenv("DB_NAME", "postfix"),
+        "host": os.getenv("DB_HOST", "localhost"),
+        "user": os.getenv("DB_USER", "postgres"),
+        "password": os.getenv("DB_PASSWORD", "postgres"),
+        "port": os.getenv("DB_PORT", "5432")
+      })
+    except psycopg.OperationalError as e:
+      print(f"The error '{e}' occurred")
+      logging.info(f"DB Error: {e}")
+      raise e
+      sys.exit(1)
+
+    pool.open(wait=True)
+
+    if cache_key:
+      pool_cache[cache_key] = pool
+      return pool
+
+    else:
+        return pool_cache[cache_key]
+
+
+def test_virtual_alias(email_addr):
+    with get_db_pool() as conn:
+      query = f"SELECT email FROM virtual WHERE email ({email_addr})"
+    conn.execute(query, email_addr)
+    return True
 
 def check_dmarc(email_addr):
     matches = ["reject", "quarantine"]
@@ -141,20 +181,14 @@ class EnvelopeMilter(Milter.Base):
                 logging.info(
                     f"[{self.id}] Multiple addresses, Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                 )
-                logging.info(
-                    f"[{self.id}] Multiple addresses, OG Envelope-To: {self.mail_to} OG Header-To: {self.header_to}"
-                )
-
                 for addr in self.header_to.split(','):
                     if check_local(addr):
                         if addr == env_to_addr:
                           logging.info(
                               f"[{self.id}] This address is local, dont rewrite from; Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                           )
-                          self.chgheader("To", 0, addr )
                           return Milter.ACCEPT
                         else:
-                          self.chgheader( "To", 0, env_to_addr )
                           logging.info(
                               f"[{self.id}] This address is a remote alias delivery Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                           )
