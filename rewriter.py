@@ -56,7 +56,10 @@ def test_virtual_alias(email_addr):
         with connection.cursor() as cur:
           cur.execute("SELECT email from virtual where email = %s", (email_addr,))
           result = cur.fetchall()
-    return result
+    if len(result) == 1:
+      return True
+    else:
+      return False
 
 def check_dmarc(email_addr):
     matches = ["reject", "quarantine"]
