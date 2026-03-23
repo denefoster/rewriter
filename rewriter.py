@@ -6,7 +6,6 @@ import Milter
 import email.utils
 import os
 import re
-import sys
 import checkdmarc
 
 from psycopg_pool import ConnectionPool
@@ -41,10 +40,10 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     if self.path == '/healthz':
       try:
         with get_db_pool() as pool:
-          with pool.connection() as conn:
+          with pool.connection() as connection:
             with connection.cursor() as cur:
               cur.execute("SELECT email from virtual LIMIT 1")
-              result = cur.fetchall()
+              cur.fetchall()
               self.send_response(200)
               self.send_header('Content-type', 'text/html')
               self.end_headers()
@@ -265,7 +264,6 @@ class EnvelopeMilter(Milter.Base):
             logging.info(f"[{self.id}] ERROR writing log: {e}")
         return Milter.CONTINUE
 
-
 def main():
     timeout = 600
 
@@ -276,20 +274,23 @@ def main():
         Milter.runmilter("EnvelopeMilter", "inet:" + milter_listening_port, timeout)
 
     def run_http():
-        server_address = ('', http_listening_port)
+        server_address = ('', http_listening_port )
         # Create an instance of the threaded HTTP server
         httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
         httpd.serve_forever()
 
-    t = threading.Thread(target=run_milter)
-    t = threading.Thread(target=run_http)
-    t.start()
-    t.join()
+    threads = []
+    threads.append(threading.Thread(target=run_milter))
+    threads.append(threading.Thread(target=run_http))
+    for t in threads:
+      t.start()
+    for t in threads:
+      t.join()
 
 
 if __name__ == "__main__":
     logging.info(f"Starting, milter interface listneing on {milter_listening_port}")
-    logging.info(f"http interface listneing on {http_listening_port}")
+    logging.info(f"http interface listneing on {http_listening_port }")
     logging.info(f"Local domains are: {local_domains}")
 
     main()
