@@ -11,7 +11,7 @@ import checkdmarc
 from psycopg_pool import ConnectionPool
 import psycopg
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
@@ -35,11 +35,13 @@ logging.basicConfig(
 
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-  # Override the do_GET method to handle GET requests
+  def log_message(self, format, *args):
+    return  # This line effectively suppresses the log output
+
   def do_GET(self):
     if self.path == '/healthz':
       try:
-        with get_db_pool() as pool:
+        with get_db_pool(check=ConnectionPool.check_connection) as pool:
           with pool.connection() as connection:
             with connection.cursor() as cur:
               cur.execute("SELECT email from virtual LIMIT 1")
@@ -276,7 +278,7 @@ def main():
     def run_http():
         server_address = ('', http_listening_port )
         # Create an instance of the threaded HTTP server
-        httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
+        httpd = ThreadingHTTPServer(server_address, SimpleHTTPRequestHandler)
         httpd.serve_forever()
 
     threads = []
