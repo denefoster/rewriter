@@ -12,11 +12,13 @@ import checkdmarc
 from psycopg_pool import ConnectionPool
 import psycopg
 
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
-listening_port = os.environ.get("LISTENING_PORT", "8800")
+milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
+http_listening_port = os.environ.get("LISTENING_PORT", "8800")
 log_level = os.environ.get("LOG_LEVEL", "DEBUG")
 pool_cache: dict[ConnectionPool] = {}
 
@@ -33,6 +35,36 @@ logging.basicConfig(
 )
 
 
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+  # Override the do_GET method to handle GET requests
+  def do_GET(self):
+    if self.path == '/healthz':
+      try:
+        with get_db_pool() as pool:
+          with pool.connection() as conn:
+            with connection.cursor() as cur:
+              cur.execute("SELECT email from virtual LIMIT 1")
+              result = cur.fetchall()
+              self.send_response(200)
+              self.send_header('Content-type', 'text/html')
+              self.end_headers()
+              self.wfile.write(b"OK")
+      except psycopg.OperationalError:
+        self.send_response(400)
+        # Set the response headers
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+        # Write the response content
+        self.wfile.write(b"Not OK")
+    else:
+      self.send_response(400)
+      # Set the response headers
+      self.send_header('Content-type', 'text/html')
+      self.end_headers()
+      # Write the response content
+      self.wfile.write(b"Not OK")
+
+
 def get_db_pool() -> ConnectionPool:
   try:
     pool = ConnectionPool(kwargs={
@@ -40,13 +72,11 @@ def get_db_pool() -> ConnectionPool:
       "host": os.getenv("DB_HOST", "localhost"),
       "user": os.getenv("DB_USER", "postgres"),
       "password": os.getenv("DB_PASSWORD", "postgres"),
-      "sslmode": "require",
       "port": os.getenv("DB_PORT", "5432")
-    })
+    }, check=ConnectionPool.check_connection)
   except psycopg.OperationalError as e:
     logging.info(f"DB Error: {e}")
     raise e
-    sys.exit(1)
   pool.open(wait=True)
   return pool
 
@@ -242,16 +272,24 @@ def main():
     Milter.factory = EnvelopeMilter
     Milter.set_flags(Milter.ADDHDRS)
 
-    def run():
-        Milter.runmilter("EnvelopeMilter", "inet:" + listening_port, timeout)
+    def run_milter():
+        Milter.runmilter("EnvelopeMilter", "inet:" + milter_listening_port, timeout)
 
-    t = threading.Thread(target=run)
+    def run_http():
+        server_address = ('', http_listening_port)
+        # Create an instance of the threaded HTTP server
+        httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
+        httpd.serve_forever()
+
+    t = threading.Thread(target=run_milter)
+    t = threading.Thread(target=run_http)
     t.start()
     t.join()
 
 
 if __name__ == "__main__":
-    logging.info(f"Starting, listneing on {listening_port}")
+    logging.info(f"Starting, milter interface listneing on {milter_listening_port}")
+    logging.info(f"http interface listneing on {http_listening_port}")
     logging.info(f"Local domains are: {local_domains}")
 
     main()
