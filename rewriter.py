@@ -36,7 +36,7 @@ logging.basicConfig(
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
   def log_message(self, format, *args):
-    if self.path != '/healthz' or self.code != '200':
+    if self.path != '/healthz':
       log_line = format % args
       logging.info(
         f"[{self}] {log_line}"
