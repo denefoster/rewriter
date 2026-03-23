@@ -51,20 +51,20 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
               cur.execute("SELECT email from virtual LIMIT 1")
               cur.fetchall()
               self.send_response(200)
-              self.send_header('Content-type', 'text/html')
+              self.send_header('Content-type', 'text/plain')
               self.end_headers()
               self.wfile.write(b"OK")
       except psycopg.OperationalError:
         self.send_response(400)
         # Set the response headers
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Content-type', 'text/plain')
         self.end_headers()
         # Write the response content
         self.wfile.write(b"Not OK")
     else:
       self.send_response(400)
       # Set the response headers
-      self.send_header('Content-type', 'text/html')
+      self.send_header('Content-type', 'text/plain')
       self.end_headers()
       # Write the response content
       self.wfile.write(b"Not OK")
