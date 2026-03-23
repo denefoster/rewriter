@@ -77,7 +77,7 @@ def get_db_pool() -> ConnectionPool:
       "user": os.getenv("DB_USER", "postgres"),
       "password": os.getenv("DB_PASSWORD", "postgres"),
       "port": os.getenv("DB_PORT", "5432")
-    }, check=ConnectionPool.check_connection)
+    })
   except psycopg.OperationalError as e:
     logging.info(f"DB Error: {e}")
     raise e
@@ -86,7 +86,7 @@ def get_db_pool() -> ConnectionPool:
 
 
 def test_virtual_alias(email_addr):
-    with get_db_pool() as pool:
+    with get_db_pool(check=ConnectionPool.check_connection) as pool:
       with pool.connection() as connection:
         with connection.cursor() as cur:
           cur.execute("SELECT email from virtual where email = %s", (email_addr,))
