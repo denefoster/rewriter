@@ -36,7 +36,10 @@ logging.basicConfig(
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
   def log_message(self, format, *args):
-    return  # This line effectively suppresses the log output
+    log_line = format % args
+    logging.info(
+      f"[{self}] {log_line}"
+    )
 
   def do_GET(self):
     if self.path == '/healthz':
