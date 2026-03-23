@@ -18,7 +18,7 @@ forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
-http_listening_port = os.environ.get("LISTENING_PORT", "8800")
+http_listening_port = os.environ.get("LISTENING_PORT", 8000)
 log_level = os.environ.get("LOG_LEVEL", "DEBUG")
 pool_cache: dict[ConnectionPool] = {}
 
