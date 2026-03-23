@@ -6,7 +6,6 @@ import Milter
 import email.utils
 import os
 import re
-import sys
 import checkdmarc
 
 from psycopg_pool import ConnectionPool
@@ -17,10 +16,8 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
-milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
-http_listening_port = os.environ.get("HTTP_LISTENING_PORT", 8000)
+listening_port = os.environ.get("LISTENING_PORT", "8800")
 log_level = os.environ.get("LOG_LEVEL", "DEBUG")
-pool_cache: dict[ConnectionPool] = {}
 
 mailmatch = re.compile(
     r"[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+(?:\.[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+)*=40(?:[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?",
@@ -33,36 +30,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     format="{asctime} {levelname} {filename}:{lineno}: {message}",
 )
-
-
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-  # Override the do_GET method to handle GET requests
-  def do_GET(self):
-    if self.path == '/healthz':
-      try:
-        with get_db_pool() as pool:
-          with pool.connection() as conn:
-            with connection.cursor() as cur:
-              cur.execute("SELECT email from virtual LIMIT 1")
-              result = cur.fetchall()
-              self.send_response(200)
-              self.send_header('Content-type', 'text/html')
-              self.end_headers()
-              self.wfile.write(b"OK")
-      except psycopg.OperationalError:
-        self.send_response(400)
-        # Set the response headers
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        # Write the response content
-        self.wfile.write(b"Not OK")
-    else:
-      self.send_response(400)
-      # Set the response headers
-      self.send_header('Content-type', 'text/html')
-      self.end_headers()
-      # Write the response content
-      self.wfile.write(b"Not OK")
 
 
 def get_db_pool() -> ConnectionPool:
@@ -272,24 +239,16 @@ def main():
     Milter.factory = EnvelopeMilter
     Milter.set_flags(Milter.ADDHDRS)
 
-    def run_milter():
-        Milter.runmilter("EnvelopeMilter", "inet:" + milter_listening_port, timeout)
+    def run():
+        Milter.runmilter("EnvelopeMilter", "inet:" + listening_port, timeout)
 
-    def run_http():
-        server_address = ('', http_listening_port)
-        # Create an instance of the threaded HTTP server
-        httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)
-        httpd.serve_forever()
-
-    t = threading.Thread(target=run_milter)
-    t = threading.Thread(target=run_http)
+    t = threading.Thread(target=run)
     t.start()
     t.join()
 
 
 if __name__ == "__main__":
-    logging.info(f"Starting, milter interface listneing on {milter_listening_port}")
-    logging.info(f"http interface listneing on {http_listening_port}")
+    logging.info(f"Starting, listneing on {listening_port}")
     logging.info(f"Local domains are: {local_domains}")
 
     main()
