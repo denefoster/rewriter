@@ -19,7 +19,8 @@ local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
 http_listening_port = os.environ.get("HTTP_LISTENING_PORT", 8000)
 log_level = os.environ.get("LOG_LEVEL", "DEBUG")
-hostname = os.environ.get("HOSTNAME", "mx-slush")
+logging_hostname = os.environ.get("LOGGING_HOSTNAME", "mx-slush")
+logging_procname = os.environ.get("LOGGING_PROCNAME", "milter/rewriter")
 pool_cache: dict[ConnectionPool] = {}
 
 mailmatch = re.compile(
@@ -30,79 +31,83 @@ mailmatch = re.compile(
 logging.basicConfig(
     level=log_level,
     style="{",
-    #datefmt="%Y-%m-%d %H:%M:%S",
     datefmt="%b %d %H:%M:%S",
-    # Apr 26 19:25:56
-    #format="{asctime} {levelname} {filename}:{lineno}: {message}",
-    format="{asctime} {hostname} milter/rewriter {message}",
+    format="{asctime} {logging_hostname} milter/rewriter[{process}] {message} {filename}:{lineno}",
 )
+
+log_const = {
+    "logging_hostname": logging_hostname,
+    "logginer_procname": logging_procname,
+}
 
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-  def log_message(self, format, *args):
-    if self.path != '/healthz':
-      log_line = format % args
-      logging.info(
-        f"[{self}] {log_line}"
-      )
+    def log_message(self, format, *args):
+        if self.path != "/healthz":
+            log_line = format % args
+            logging.info(f"[{self}] {log_line}", extra=log_const)
 
-  def do_GET(self):
-    if self.path == '/healthz':
-      try:
-        with get_db_pool() as pool:
-          with pool.connection() as connection:
-            with connection.cursor() as cur:
-              cur.execute("SELECT email from virtual LIMIT 1")
-              cur.fetchall()
-              self.send_response(200)
-              self.send_header('Content-type', 'text/plain')
-              self.end_headers()
-              try:
-                 self.wfile.write(b"OK")
-              except BrokenPipeError as e:
-                logging.debug(f"Client timeout: {e}")
-      except psycopg.OperationalError:
-        self.send_response(400)
-        # Set the response headers
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
-        # Write the response content
-        self.wfile.write(b"Not OK")
-    else:
-      self.send_response(400)
-      # Set the response headers
-      self.send_header('Content-type', 'text/plain')
-      self.end_headers()
-      # Write the response content
-      self.wfile.write(b"Not OK")
+    def do_GET(self):
+        if self.path == "/healthz":
+            try:
+                with get_db_pool() as pool:
+                    with pool.connection() as connection:
+                        with connection.cursor() as cur:
+                            cur.execute("SELECT email from virtual LIMIT 1")
+                            cur.fetchall()
+                            self.send_response(200)
+                            self.send_header("Content-type", "text/plain")
+                            self.end_headers()
+                            try:
+                                self.wfile.write(b"OK")
+                            except BrokenPipeError as e:
+                                logging.debug(f"Client timeout: {e}", extra=log_const)
+            except psycopg.OperationalError:
+                self.send_response(400)
+                # Set the response headers
+                self.send_header("Content-type", "text/plain")
+                self.end_headers()
+                # Write the response content
+                self.wfile.write(b"Not OK")
+        else:
+            self.send_response(400)
+            # Set the response headers
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            # Write the response content
+            self.wfile.write(b"Not OK")
 
 
 def get_db_pool() -> ConnectionPool:
-  try:
-    pool = ConnectionPool(kwargs={
-      "dbname": os.getenv("DB_NAME", "postfix"),
-      "host": os.getenv("DB_HOST", "localhost"),
-      "user": os.getenv("DB_USER", "postgres"),
-      "password": os.getenv("DB_PASSWORD", "postgres"),
-      "port": os.getenv("DB_PORT", "5432")
-    },check=ConnectionPool.check_connection)
-  except psycopg.OperationalError as e:
-    logging.info(f"DB Error: {e}")
-    raise e
-  pool.open(wait=True)
-  return pool
+    try:
+        pool = ConnectionPool(
+            kwargs={
+                "dbname": os.getenv("DB_NAME", "postfix"),
+                "host": os.getenv("DB_HOST", "localhost"),
+                "user": os.getenv("DB_USER", "postgres"),
+                "password": os.getenv("DB_PASSWORD", "postgres"),
+                "port": os.getenv("DB_PORT", "5432"),
+            },
+            check=ConnectionPool.check_connection,
+        )
+    except psycopg.OperationalError as e:
+        logging.info(f"DB Error: {e}", extra=log_const)
+        raise e
+    pool.open(wait=True)
+    return pool
 
 
 def test_virtual_alias(email_addr):
     with get_db_pool() as pool:
-      with pool.connection() as connection:
-        with connection.cursor() as cur:
-          cur.execute("SELECT email from virtual where email = %s", (email_addr,))
-          result = cur.fetchall()
+        with pool.connection() as connection:
+            with connection.cursor() as cur:
+                cur.execute("SELECT email from virtual where email = %s", (email_addr,))
+                result = cur.fetchall()
     if len(result) == 1:
-      return True
+        return True
     else:
-      return False
+        return False
+
 
 def check_dmarc(email_addr):
     matches = ["reject", "quarantine"]
@@ -179,11 +184,13 @@ class EnvelopeMilter(Milter.Base):
     def eom(self):
         try:
             logging.debug(
-                f"[{self.id}] Envelope-From: {self.mail_from}, Header-From: {self.header_from or 'N/A'}"
+                f"[{self.id}] Envelope-From: {self.mail_from}, Header-From: {self.header_from or 'N/A'}",
+                extra=log_const,
             )
 
             logging.debug(
-                f"[{self.id}] Envelope-To: {self.mail_to or 'N/A'}, Header-To: {self.header_to or 'N/A'}"
+                f"[{self.id}] Envelope-To: {self.mail_to or 'N/A'}, Header-To: {self.header_to or 'N/A'}",
+                extra=log_const,
             )
 
             hdr_from_name, hdr_from_addr = email.utils.parseaddr(self.header_from)
@@ -193,10 +200,12 @@ class EnvelopeMilter(Milter.Base):
             # scenario 1
             if unwrapped_addr := check_wrapped(env_to_addr, forwarding_domain):
                 logging.debug(
-                    f"[{self.id}] Header from: {hdr_from_addr} is remote, Header To: {hdr_to_addr} is wrapped local"
+                    f"[{self.id}] Header from: {hdr_from_addr} is remote, Header To: {hdr_to_addr} is wrapped local",
+                    extra=log_const,
                 )
                 logging.info(
-                    f"[{self.id}] unwrap: from {env_to_addr} to {unwrapped_addr}"
+                    f"[{self.id}] unwrap: from {env_to_addr} to {unwrapped_addr}",
+                    extra=log_const,
                 )
                 self.delrcpt(env_to_addr)
                 self.addrcpt(f"<{unwrapped_addr}>")
@@ -204,12 +213,14 @@ class EnvelopeMilter(Milter.Base):
             # scenario 2
             elif check_local(env_to_addr) and not test_virtual_alias(env_to_addr):
                 logging.info(
-                    f"[{self.id}] none: Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
+                    f"[{self.id}] none: Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}",
+                    extra=log_const,
                 )
                 return Milter.ACCEPT
             elif check_local(env_to_addr) and test_virtual_alias(env_to_addr):
                 logging.debug(
-                    f"[{self.id}] Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
+                    f"[{self.id}] Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}",
+                    extra=log_const,
                 )
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
@@ -222,27 +233,31 @@ class EnvelopeMilter(Milter.Base):
                         new_hdr_from_addr,
                     )
                     logging.info(
-                        f"[{self.id}] rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr}, header-from changed {hdr_from_addr} to {new_hdr_from_addr}"
+                        f"[{self.id}] rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr}, header-from changed {hdr_from_addr} to {new_hdr_from_addr}",
+                        extra=log_const,
                     )
                 elif check_spf(hdr_from_addr):
                     logging.info(
-                        f"[{self.id}] rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
+                        f"[{self.id}] rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}",
+                        extra=log_const,
                     )
                     self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
-                        f"[{self.id}] none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
+                        f"[{self.id}] none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}",
+                        extra=log_const,
                     )
                 return Milter.ACCEPT
             # scenario 3
             elif check_local(env_from_addr) and check_local(hdr_from_addr):
                 logging.info(
-                    f"[{self.id}] none: List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr}"
+                    f"[{self.id}] none: List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr}",
+                    extra=log_const,
                 )
                 return Milter.ACCEPT
             # no scenario match
             else:
-                logging.info(f"[{self.id}] Fall through")
+                logging.info(f"[{self.id}] Fall through", extra=log_const)
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
@@ -254,22 +269,26 @@ class EnvelopeMilter(Milter.Base):
                         new_hdr_from_addr,
                     )
                     logging.info(
-                        f"[{self.id}] rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr} header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
+                        f"[{self.id}] rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr} header-From changed from {hdr_from_addr} to {new_hdr_from_addr}",
+                        extra=log_const,
                     )
                 elif check_spf(hdr_from_addr):
                     logging.info(
-                        f"[{self.id}] rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
+                        f"[{self.id}] rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}",
+                        extra=log_const,
                     )
                     self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
-                        f"[{self.id}] none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
+                        f"[{self.id}] none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}",
+                        extra=log_const,
                     )
                 return Milter.ACCEPT
 
         except Exception as e:
-            logging.info(f"[{self.id}] ERROR writing log: {e}")
+            logging.info(f"[{self.id}] ERROR writing log: {e}", extra=log_const)
         return Milter.CONTINUE
+
 
 def main():
     timeout = 600
@@ -281,7 +300,7 @@ def main():
         Milter.runmilter("EnvelopeMilter", "inet:" + milter_listening_port, timeout)
 
     def run_http():
-        server_address = ('', http_listening_port )
+        server_address = ("", http_listening_port)
         # Create an instance of the threaded HTTP server
         httpd = ThreadingHTTPServer(server_address, SimpleHTTPRequestHandler)
         httpd.serve_forever()
@@ -290,14 +309,17 @@ def main():
     threads.append(threading.Thread(target=run_milter))
     threads.append(threading.Thread(target=run_http))
     for t in threads:
-      t.start()
+        t.start()
     for t in threads:
-      t.join()
+        t.join()
 
 
 if __name__ == "__main__":
-    logging.info(f"Starting, milter interface listneing on {milter_listening_port}")
-    logging.info(f"http interface listneing on {http_listening_port }")
-    logging.info(f"Local domains are: {local_domains}")
+    logging.info(
+        f"Starting, milter interface listneing on {milter_listening_port}",
+        extra=log_const,
+    )
+    logging.info(f"http interface listneing on {http_listening_port}", extra=log_const)
+    logging.info(f"Local domains are: {local_domains}", extra=log_const)
 
     main()
