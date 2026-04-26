@@ -295,10 +295,15 @@ def main():
 
     Milter.factory = EnvelopeMilter
     Milter.set_flags(Milter.ADDHDRS)
-    with open("/proc/1/fd/1", "w") as f:
-        subprocess.run(f"tail -F {logging_filename}",bufsize=1,shell=True, capture_output=False, stdout=f, stderr=subprocess.STDOUT)
-
-
+    #with open("/proc/1/fd/1", "w") as f:
+    #    subprocess.run(
+    #        f"tail -F {logging_filename}",
+    #        bufsize=1,
+    #        shell=True,
+    #        capture_output=False,
+    #        stdout=f,
+    #        stderr=f,
+    #    )
 
     def run_milter():
         Milter.runmilter("EnvelopeMilter", "inet:" + milter_listening_port, timeout)
