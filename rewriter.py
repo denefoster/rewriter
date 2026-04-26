@@ -251,7 +251,7 @@ class EnvelopeMilter(Milter.Base):
                 return Milter.ACCEPT
             # no scenario match
             else:
-                logging.info(f"[{self.id}] Fall through", extra=log_const)
+                logging.debug(f"debug: Fall through [{self.id}]")
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
