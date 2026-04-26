@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
+import checkdmarc
 import threading
 import logging
+from logging.handlers import TimedRotatingFileHandler
+import subprocess
+
 import Milter
 
 import email.utils
 import os
-import sys
 import re
-import checkdmarc
 
 from psycopg_pool import ConnectionPool
 import psycopg
@@ -22,7 +24,8 @@ http_listening_port = os.environ.get("HTTP_LISTENING_PORT", 8000)
 log_level = os.environ.get("LOG_LEVEL", "INFO")
 logging_hostname = os.environ.get("LOGGING_HOSTNAME", "mx-slush")
 logging_procname = os.environ.get("LOGGING_PROCNAME", "milter/rewriter")
-pool_cache: dict[ConnectionPool] = {}
+logging_filename = os.environ.get("LOGGING_FILENAME", "/var/log/rewrite.log")
+logging_rotate_period = os.environ.get("LOGGING_ROTATE_PERIOD", 'D')
 
 mailmatch = re.compile(
     r"[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+(?:\.[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+)*=40(?:[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?",
@@ -43,7 +46,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 logger.setLevel(log_level)
+handler = TimedRotatingFileHandler(logging_filename, when=logging_rotate_period, interval=1, backupCount=5)
+logger.addHandler(handler)
 logging = logging.LoggerAdapter(logger, log_const)
+
+
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -288,6 +295,10 @@ def main():
 
     Milter.factory = EnvelopeMilter
     Milter.set_flags(Milter.ADDHDRS)
+    with open("/proc/1/fd/1", "w") as f:
+        subprocess.run(f"tail -F {logging_filename}",bufsize=1,shell=True, capture_output=False, stdout=f, stderr=subprocess.STDOUT)
+
+
 
     def run_milter():
         Milter.runmilter("EnvelopeMilter", "inet:" + milter_listening_port, timeout)
@@ -313,5 +324,6 @@ if __name__ == "__main__":
     )
     logging.info(f"info: http interface listneing on {http_listening_port}")
     logging.info(f"info: Local domains are: {local_domains}")
+    logging.info(f"info: logging rotation perdiod is {logging_rotate_period}")
 
     main()
