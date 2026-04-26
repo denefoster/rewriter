@@ -199,13 +199,15 @@ class EnvelopeMilter(Milter.Base):
             env_from_addr = email.utils.parseaddr(self.mail_from)[1]
             hdr_to_addr = email.utils.parseaddr(self.header_to)
             env_to_addr = email.utils.parseaddr(self.mail_to)[1]
+            queue_id = self.getsymval('j') # authenticated user
+
             # scenario 1
             if unwrapped_addr := check_wrapped(env_to_addr, forwarding_domain):
                 logging.debug(
                     f"debug: Header from: {hdr_from_addr} is remote, Header To: {hdr_to_addr} is wrapped local [{self.id}]"
                 )
                 logging.info(
-                    f"unwrap: from {env_to_addr} to {unwrapped_addr} [{self.id}]"
+                    f"[{queue_id}] unwrap: from {env_to_addr} to {unwrapped_addr} [{self.id}]"
                 )
                 self.delrcpt(env_to_addr)
                 self.addrcpt(f"<{unwrapped_addr}>")
@@ -213,12 +215,12 @@ class EnvelopeMilter(Milter.Base):
             # scenario 2
             elif check_local(env_to_addr) and not test_virtual_alias(env_to_addr):
                 logging.info(
-                    f"none: Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
+                    f"[{queue_id}] none: Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 return Milter.ACCEPT
             elif check_local(env_to_addr) and test_virtual_alias(env_to_addr):
                 logging.debug(
-                    f"debug: Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
+                    f"[{queue_id}] debug: Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
@@ -231,27 +233,27 @@ class EnvelopeMilter(Milter.Base):
                         new_hdr_from_addr,
                     )
                     logging.info(
-                        f"rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr}, header-from changed {hdr_from_addr} to {new_hdr_from_addr} [{self.id}]"
+                        f"[{queue_id}] rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr}, header-from changed {hdr_from_addr} to {new_hdr_from_addr} [{self.id}]"
                     )
                 elif check_spf(hdr_from_addr):
                     logging.info(
-                        f"rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr} [{self.id}]"
+                        f"[{queue_id}] rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr} [{self.id}]"
                     )
                     self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
-                        f"none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr} [{self.id}]"
+                        f"[{queue_id}] none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr} [{self.id}]"
                     )
                 return Milter.ACCEPT
             # scenario 3
             elif check_local(env_from_addr) and check_local(hdr_from_addr):
                 logging.info(
-                    f"none: List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr} [{self.id}]"
+                    f"[{queue_id}] none: List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr} [{self.id}]"
                 )
                 return Milter.ACCEPT
             # no scenario match
             else:
-                logging.debug(f"debug: Fall through [{self.id}]")
+                logging.debug(f"[{queue_id}] debug: Fall through [{self.id}]")
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
@@ -263,21 +265,21 @@ class EnvelopeMilter(Milter.Base):
                         new_hdr_from_addr,
                     )
                     logging.info(
-                        f"rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr} header-From changed from {hdr_from_addr} to {new_hdr_from_addr} [{self.id}]"
+                        f"[{queue_id}] rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr} header-From changed from {hdr_from_addr} to {new_hdr_from_addr} [{self.id}]"
                     )
                 elif check_spf(hdr_from_addr):
                     logging.info(
-                        f"rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr} [{self.id}]"
+                        f"[{queue_id}] rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr} [{self.id}]"
                     )
                     self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
-                        f"none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr} [{self.id}]"
+                        f"[{queue_id}] none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr} [{self.id}]"
                     )
                 return Milter.ACCEPT
 
         except Exception as e:
-            logging.info(f"error: writing log: {e} [{self.id}]")
+            logging.info(f"[{queue_id}] error: writing log: {e} [{self.id}]")
         return Milter.CONTINUE
 
 
