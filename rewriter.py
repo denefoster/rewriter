@@ -199,7 +199,7 @@ class EnvelopeMilter(Milter.Base):
             env_from_addr = email.utils.parseaddr(self.mail_from)[1]
             hdr_to_addr = email.utils.parseaddr(self.header_to)
             env_to_addr = email.utils.parseaddr(self.mail_to)[1]
-            queue_id = self.getsymval('j') # authenticated user
+            queue_id = self.getsymval('i') # authenticated user
 
             # scenario 1
             if unwrapped_addr := check_wrapped(env_to_addr, forwarding_domain):
