@@ -19,6 +19,7 @@ local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
 http_listening_port = os.environ.get("HTTP_LISTENING_PORT", 8000)
 log_level = os.environ.get("LOG_LEVEL", "DEBUG")
+hostname = os.environ.get("HOSTNAME", "mx-slush")
 pool_cache: dict[ConnectionPool] = {}
 
 mailmatch = re.compile(
@@ -29,8 +30,11 @@ mailmatch = re.compile(
 logging.basicConfig(
     level=log_level,
     style="{",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    format="{asctime} {levelname} {filename}:{lineno}: {message}",
+    #datefmt="%Y-%m-%d %H:%M:%S",
+    datefmt="%b %d %H:%M:%S",
+    # Apr 26 19:25:56
+    #format="{asctime} {levelname} {filename}:{lineno}: {message}",
+    format="{asctime} {hostname} milter/rewriter {message}",
 )
 
 
@@ -53,7 +57,10 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
               self.send_response(200)
               self.send_header('Content-type', 'text/plain')
               self.end_headers()
-              self.wfile.write(b"OK")
+              try:
+                 self.wfile.write(b"OK")
+              except BrokenPipeError as e:
+                logging.debug(f"Client timeout: {e}")
       except psycopg.OperationalError:
         self.send_response(400)
         # Set the response headers
@@ -171,11 +178,11 @@ class EnvelopeMilter(Milter.Base):
 
     def eom(self):
         try:
-            logging.info(
+            logging.debug(
                 f"[{self.id}] Envelope-From: {self.mail_from}, Header-From: {self.header_from or 'N/A'}"
             )
 
-            logging.info(
+            logging.debug(
                 f"[{self.id}] Envelope-To: {self.mail_to or 'N/A'}, Header-To: {self.header_to or 'N/A'}"
             )
 
@@ -185,11 +192,11 @@ class EnvelopeMilter(Milter.Base):
             env_to_addr = email.utils.parseaddr(self.mail_to)[1]
             # scenario 1
             if unwrapped_addr := check_wrapped(env_to_addr, forwarding_domain):
-                logging.info(
+                logging.debug(
                     f"[{self.id}] Header from: {hdr_from_addr} is remote, Header To: {hdr_to_addr} is wrapped local"
                 )
                 logging.info(
-                    f"[{self.id}] Unwrapped from {env_to_addr} to {unwrapped_addr}"
+                    f"[{self.id}] unwrap: from {env_to_addr} to {unwrapped_addr}"
                 )
                 self.delrcpt(env_to_addr)
                 self.addrcpt(f"<{unwrapped_addr}>")
@@ -197,11 +204,11 @@ class EnvelopeMilter(Milter.Base):
             # scenario 2
             elif check_local(env_to_addr) and not test_virtual_alias(env_to_addr):
                 logging.info(
-                    f"[{self.id}] Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
+                    f"[{self.id}] none: Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                 )
                 return Milter.ACCEPT
             elif check_local(env_to_addr) and test_virtual_alias(env_to_addr):
-                logging.info(
+                logging.debug(
                     f"[{self.id}] Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr}"
                 )
                 if check_dmarc(hdr_from_addr):
@@ -215,25 +222,22 @@ class EnvelopeMilter(Milter.Base):
                         new_hdr_from_addr,
                     )
                     logging.info(
-                        f"[{self.id}] Envelope-From changed from {env_from_addr} to {forwarding_addr}"
-                    )
-                    logging.info(
-                        f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
+                        f"[{self.id}] rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr}, header-from changed {hdr_from_addr} to {new_hdr_from_addr}"
                     )
                 elif check_spf(hdr_from_addr):
                     logging.info(
-                        f"[{self.id}] SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
+                        f"[{self.id}] rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
                     )
                     self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
-                        f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
+                        f"[{self.id}] none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
                     )
                 return Milter.ACCEPT
             # scenario 3
             elif check_local(env_from_addr) and check_local(hdr_from_addr):
                 logging.info(
-                    f"[{self.id}] List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr}"
+                    f"[{self.id}] none: List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr}"
                 )
                 return Milter.ACCEPT
             # no scenario match
@@ -250,19 +254,16 @@ class EnvelopeMilter(Milter.Base):
                         new_hdr_from_addr,
                     )
                     logging.info(
-                        f"[{self.id}] Envelope-From changed from {env_from_addr} to {forwarding_addr}"
-                    )
-                    logging.info(
-                        f"[{self.id}] Header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
+                        f"[{self.id}] rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr} header-From changed from {hdr_from_addr} to {new_hdr_from_addr}"
                     )
                 elif check_spf(hdr_from_addr):
                     logging.info(
-                        f"[{self.id}] SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
+                        f"[{self.id}] rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr}"
                     )
                     self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
-                        f"[{self.id}] No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
+                        f"[{self.id}] none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr}"
                     )
                 return Milter.ACCEPT
 
