@@ -13,15 +13,12 @@ import re
 from psycopg_pool import ConnectionPool
 import psycopg
 
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-
 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
 http_listening_port = os.environ.get("HTTP_LISTENING_PORT", 8000)
 log_level = os.environ.get("LOG_LEVEL", "INFO")
-logging_hostname = os.environ.get("LOGGING_HOSTNAME", "mx-slush")
 logging_procname = os.environ.get("LOGGING_PROCNAME", "milter/rewriter")
 logging_filename = os.environ.get("LOGGING_FILENAME", "/var/log/rewrite.log")
 logging_rotate_period = os.environ.get("LOGGING_ROTATE_PERIOD", "D")
@@ -50,9 +47,16 @@ file_handler = TimedRotatingFileHandler(
     logging_filename, when=logging_rotate_period, interval=1, backupCount=5
 )
 
-logger.addHandler(file_handler)
-logging = logging.LoggerAdapter(logger)
+file_formatter = logging.Formatter(
+    style="{",
+    datefmt="%b %d %H:%M:%S",
+    fmt=logging_format,
+)
 
+file_handler.setFormatter(file_formatter)
+
+logger.addHandler(file_handler)
+logging = logging.LoggerAdapter(logger, log_const)
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
