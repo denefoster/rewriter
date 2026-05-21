@@ -25,7 +25,7 @@ logging_hostname = os.environ.get("LOGGING_HOSTNAME", "mx-slush")
 logging_procname = os.environ.get("LOGGING_PROCNAME", "milter/rewriter")
 logging_filename = os.environ.get("LOGGING_FILENAME", "/var/log/rewrite.log")
 logging_rotate_period = os.environ.get("LOGGING_ROTATE_PERIOD", "D")
-logging_format = "{asctime} {logging_hostname} milter/rewriter[{process}]: {message} [{filename}:{lineno}]"
+logging_format = "{asctime} milter/rewriter[{process}]: {message} [{filename}:{lineno}]"
 
 mailmatch = re.compile(
     r"[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+(?:\.[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+)*=40(?:[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?",
