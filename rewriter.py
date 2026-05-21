@@ -29,11 +29,6 @@ mailmatch = re.compile(
     re.IGNORECASE,
 )
 
-log_const = {
-    "logging_hostname": logging_hostname,
-    "logging_procname": logging_procname,
-}
-
 logging.basicConfig(
     level=log_level,
     style="{",
@@ -56,7 +51,7 @@ file_formatter = logging.Formatter(
 file_handler.setFormatter(file_formatter)
 
 logger.addHandler(file_handler)
-logging = logging.LoggerAdapter(logger, log_const)
+logging = logging.LoggerAdapter(logger)
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
