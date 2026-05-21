@@ -13,6 +13,8 @@ import re
 from psycopg_pool import ConnectionPool
 import psycopg
 
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+
 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
