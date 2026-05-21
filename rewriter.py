@@ -50,16 +50,8 @@ file_handler = TimedRotatingFileHandler(
     logging_filename, when=logging_rotate_period, interval=1, backupCount=5
 )
 
-file_formatter = logging.Formatter(
-    style="{",
-    datefmt="%b %d %H:%M:%S",
-    fmt=logging_format,
-)
-
-file_handler.setFormatter(file_formatter)
-
 logger.addHandler(file_handler)
-logging = logging.LoggerAdapter(logger, log_const)
+logging = logging.LoggerAdapter(logger)
 
 
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
