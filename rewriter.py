@@ -18,6 +18,10 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
+rewrite_domain_map = {
+    'lists.sys.slush.ca': 'dmarc.sys.slush.ca',
+    'doot.sys.slush.ca': 'dmarc-doot.sys.slush.ca'
+}
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
 http_listening_port = os.environ.get("HTTP_LISTENING_PORT", 8000)
 log_level = os.environ.get("LOG_LEVEL", "INFO")
@@ -26,10 +30,11 @@ logging_filename = os.environ.get("LOGGING_FILENAME", "/var/log/rewrite.log")
 logging_rotate_period = os.environ.get("LOGGING_ROTATE_PERIOD", "D")
 logging_format = "{asctime} milter/rewriter[{process}]: {message} [{filename}:{lineno}]"
 
-mailmatch = re.compile(
-    r"[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+(?:\.[-A-Za-z0-9!#$%&'*+/=?^_`{|}~]+)*=40(?:[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[-A-Za-z0-9]*[A-Za-z0-9])?",
-    re.IGNORECASE,
-)
+wrapped_regex = f"[-a-zA-Z0-9._%+]+=40[-a-zA-Z0-9.]+@{forwarding_domain}"
+wrapped_mailmatch = re.compile(wrapped_regex, re.IGNORECASE)
+
+listbounce_regex = f"^[-_.0-9a-z]+\-bounces\+[a-zA-Z0-9._%+\-]+=[a-zA-Z0-9.\-]+@{forwarding_domain}"
+listbounce_mailmatch = re.compile(listbounce_regex, re.IGNORECASE)
 
 logging.basicConfig(
     level=log_level,
@@ -148,18 +153,19 @@ def check_spf(email_addr):
 def check_wrapped(email_addr, domain):
     if email_addr.split("@")[-1] == domain:
         wrapped_addr = email_addr.split("@")[0]
-        if mailmatch.match(wrapped_addr):
+        if wrapped_mailmatch.match(wrapped_addr):
             unwrapped_addr = wrapped_addr.replace("=40", "@")
             return unwrapped_addr
     else:
         return False
 
 
-def unwrap_address(email_addr, domain):
+def unwrap_address(email_addr):
     if email_addr.split("@")[-1] == forwarding_domain:
-        wrapped_addr = email_addr.split("@")[0]
-        if mailmatch.match(wrapped_addr):
-            unwrapped_addr = wrapped_addr.replace("=40", "@")
+        if wrapped_mailmatch.match(email_addr):
+            unwrapped_addr = email_addr.split("@")[0].replace("=40", "@")
+        elif listbounce_mailmatch.match(email_addr):
+            unwrapped_addr = 'x'
         else:
             unwrapped_addr = email_addr
     return unwrapped_addr
@@ -266,11 +272,13 @@ class EnvelopeMilter(Milter.Base):
             # no scenario match
             else:
                 logging.debug(f"{queue_id} debug: Fall through [{self.id}]")
+                rewrite_domain = rewrite_domain_map[hdr_from_addr.split("@")[1]]
                 if check_dmarc(hdr_from_addr):
+                    rewrite_domain = hdr_from_addr.split("@")[1]
                     new_hdr_from_addr = (
-                        f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
+                        f"{hdr_from_addr.replace('@', '=40')}@{rewrite_domain}"
                     )
-                    forwarding_addr = re.sub('@.*', '@' + forwarding_domain, env_from_addr)
+                    forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
                     self.chgfrom(forwarding_addr)
                     self.chgheader(
                         "From",
@@ -284,7 +292,7 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(
                         f"{queue_id} rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr} [{self.id}]"
                     )
-                    forwarding_addr = re.sub('@.*', '@' + forwarding_domain, env_from_addr)
+                    forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
                     self.chgfrom(forwarding_addr)
                 else:
                     logging.info(
