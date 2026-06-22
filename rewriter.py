@@ -33,7 +33,7 @@ logging_format = "{asctime} milter/rewriter[{process}]: {message} [{filename}:{l
 wrapped_regex = f"[-a-zA-Z0-9._%+]+=40[-a-zA-Z0-9.]+@{forwarding_domain}"
 wrapped_mailmatch = re.compile(wrapped_regex, re.IGNORECASE)
 
-listbounce_regex = f"^[-_.0-9a-z]+\-bounces\+[a-zA-Z0-9._%+\-]+=[a-zA-Z0-9.\-]+@{forwarding_domain}"
+listbounce_regex = f"^[-_.0-9a-z]+\-bounces\+[-a-zA-Z0-9._%+]+=[a-zA-Z0-9.\-]+@{forwarding_domain}"
 listbounce_mailmatch = re.compile(listbounce_regex, re.IGNORECASE)
 
 logging.basicConfig(
