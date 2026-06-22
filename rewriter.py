@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import ast
 import checkdmarc
 import threading
 import logging
@@ -18,10 +19,13 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
-rewrite_domain_map = {
-    'lists.sys.slush.ca': 'dmarc.sys.slush.ca',
-    'doot.sys.slush.ca': 'dmarc-doot.sys.slush.ca'
-}
+rewrite_domains = os.environ.get("REWRITE_DOMAINS", "'mydomain.com': 'dmarc.mydomain.com'")
+rewrite_domain_map = ast.literal_eval(rewrite_domains)
+
+#rewrite_domain_map = {
+#    'lists.sys.slush.ca': 'dmarc.sys.slush.ca',
+#    'doot.sys.slush.ca': 'dmarc-doot.sys.slush.ca'
+#}
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
 http_listening_port = os.environ.get("HTTP_LISTENING_PORT", 8000)
 log_level = os.environ.get("LOG_LEVEL", "INFO")
