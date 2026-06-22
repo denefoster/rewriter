@@ -182,9 +182,9 @@ def check_local(email_addr):
 def update_addr_wrap_log(email_addr, queue_id):
     update_addr_wrap_log = f"""
     INSERT INTO addr_wrap_log
-    VALUES ({email_addr}, {queue_id})
+    VALUES ("{email_addr}", "{queue_id}")
     ON CONFLICT (address) DO
-    UPDATE SET last_updated to now();
+    UPDATE SET last_updated = now();
     """
     try:
         with get_db_pool() as pool:
