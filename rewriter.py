@@ -20,7 +20,7 @@ forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 rewrite_domains = os.environ.get("REWRITE_DOMAINS", "'mydomain.com': 'dmarc.mydomain.com'")
-rewrite_domain_map = ast.literal_eval(rewrite_domains)
+rewrite_domain_map = ast.literal_eval(rewrite_domains.join(","))
 
 #rewrite_domain_map = {
 #    'lists.sys.slush.ca': 'dmarc.sys.slush.ca',
