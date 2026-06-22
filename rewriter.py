@@ -289,6 +289,7 @@ class EnvelopeMilter(Milter.Base):
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
                     )
                     update_addr_wrap_log(hdr_from_addr, queue_id)
+                    forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
                     self.chgfrom(forwarding_addr)
                     self.chgheader(
                         "From",
@@ -330,17 +331,17 @@ class EnvelopeMilter(Milter.Base):
                         new_hdr_from_addr,
                     )
                     update_addr_wrap_log(hdr_from_addr, queue_id)
-                    forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
-                    self.chgfrom(forwarding_addr)
+                    new_forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
+                    self.chgfrom(new_forwarding_addr)
                     logging.info(
-                        f"{queue_id} rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr} header-From changed from {hdr_from_addr} to {new_hdr_from_addr} [{self.id}]"
+                        f"{queue_id} rewrite-both: Envelope-From changed from {env_from_addr} to {new_forwarding_addr} header-From changed from {hdr_from_addr} to {new_hdr_from_addr} [{self.id}]"
                     )
                 elif check_spf(hdr_from_addr):
                     logging.info(
                         f"{queue_id} rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr} [{self.id}]"
                     )
-                    forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
-                    self.chgfrom(forwarding_addr)
+                    new_forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
+                    self.chgfrom(new_forwarding_addr)
                 else:
                     logging.info(
                         f"{queue_id} none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr} [{self.id}]"
