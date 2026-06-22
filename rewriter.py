@@ -236,6 +236,7 @@ class EnvelopeMilter(Milter.Base):
 
             # scenario 1
             if wrapped_mailmatch.match(env_to_addr):
+                logging.info('checking for unwrapping')
                 unwrapped_addr = env_to_addr.split("@")[0].replace("=40", "@")
                 try:
                     with get_db_pool() as pool:
@@ -262,6 +263,7 @@ class EnvelopeMilter(Milter.Base):
                 else:
                     return Milter.REJECT
             elif listbounce_mailmatch.match(env_to_addr):
+                logging.info('checking for list bounce')
                 unwrapped_domain = [key for key, val in rewrite_domain_map.items() if val == env_to_addr.split('@')[1]][0]
                 unwrapped_addr = env_to_addr.split("@")[1].replace(env_to_addr.split('@')[1], unwrapped_domain)
                 logging.info(f"{queue_id} unwrap: list bounce unwrapped from {env_to_addr} to {unwrapped_addr}")
@@ -272,11 +274,13 @@ class EnvelopeMilter(Milter.Base):
 
             # scenario 2
             elif check_local(env_to_addr) and not test_virtual_alias(env_to_addr):
+                logging.info('checking for local list recipient')
                 logging.info(
                     f"{queue_id} none: Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 return Milter.ACCEPT
             elif check_local(env_to_addr) and test_virtual_alias(env_to_addr):
+                logging.info('checking for virtual alias')
                 logging.debug(
                     f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
@@ -306,6 +310,7 @@ class EnvelopeMilter(Milter.Base):
                 return Milter.ACCEPT
             # scenario 3
             elif check_local(env_from_addr) and check_local(hdr_from_addr):
+                logging.info('checking for list source')
                 logging.info(
                     f"{queue_id} none: List source, no action needed Envelope-From: {env_from_addr} Header-From: {hdr_from_addr} [{self.id}]"
                 )
