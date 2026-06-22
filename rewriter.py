@@ -179,6 +179,21 @@ def check_local(email_addr):
     except AttributeError:
         return False
 
+def update_addr_wrap_log(email_addr, queue_id):
+    update_addr_wrap_log = f"""
+    INSERT INTO addr_wrap_log
+    VALUES ({email_addr}, {queue_id})
+    ON CONFLICT (address) DO
+    UPDATE SET last_updated to now();
+    """
+    try:
+        with get_db_pool() as pool:
+            with pool.connection() as connection:
+                with connection.cursor() as cur:
+                    cur.execute(update_addr_wrap_log)
+    except psycopg.OperationalError as e:
+        logging.info(f"failed to update addr_wrap_log: {e}")
+    return True
 
 class EnvelopeMilter(Milter.Base):
     def __init__(self):
@@ -276,13 +291,14 @@ class EnvelopeMilter(Milter.Base):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
                     )
-                    forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
-                    self.chgfrom(forwarding_addr)
                     self.chgheader(
                         "From",
                         0,
                         new_hdr_from_addr,
                     )
+                    update_addr_wrap_log(hdr_from_addr, queue_id)
+                    forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
+                    self.chgfrom(forwarding_addr)
                     logging.info(
                         f"{queue_id} rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr} header-From changed from {hdr_from_addr} to {new_hdr_from_addr} [{self.id}]"
                     )
