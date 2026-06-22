@@ -242,7 +242,6 @@ class EnvelopeMilter(Milter.Base):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
                     )
-                    forwarding_addr = re.sub('@.*', '@' + forwarding_domain, env_from_addr)
                     self.chgfrom(forwarding_addr)
                     self.chgheader(
                         "From",
