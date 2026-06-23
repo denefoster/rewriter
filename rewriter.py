@@ -184,7 +184,7 @@ def check_local(email_addr):
 def update_addr_wrap_log(email_addr, new_email_addr):
     update_addr_wrap_log = f"""
     INSERT INTO virtual (email, destination, transport, source)
-    VALUES ('{new_email_addr}', '{email_addr}', 'relay', 'rewriter')
+    VALUES ('{new_email_addr}', '{email_addr}', 'relay:', 'rewriter')
     ON CONFLICT (email) DO
     UPDATE SET updated = now();
     """
