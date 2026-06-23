@@ -181,12 +181,12 @@ def check_local(email_addr):
     except AttributeError:
         return False
 
-def update_addr_wrap_log(email_addr, queue_id):
+def update_addr_wrap_log(email_addr, new_email_addr):
     update_addr_wrap_log = f"""
-    INSERT INTO addr_wrap_log (address, queue_id)
-    VALUES ('{email_addr}', '{queue_id}')
-    ON CONFLICT (address) DO
-    UPDATE SET last_updated = now();
+    INSERT INTO virtual (email, destination, transport, source)
+    VALUES ('{new_email_addr}', '{email_addr}', 'relay', 'rewriter')
+    ON CONFLICT (email) DO
+    UPDATE SET updated = now();
     """
     try:
         with get_db_pool() as pool:
@@ -243,13 +243,13 @@ class EnvelopeMilter(Milter.Base):
                         with pool.connection() as connection:
                             with connection.cursor() as cur:
                                 cur.execute(f"""
-                                            SELECT COUNT(address) FROM
-                                            addr_wrap_log WHERE address="{env_to_addr}" and
-                                            last_updated >= NOW() - INTERVAL '5 MINUTES';
+                                            SELECT COUNT(email) FROM
+                                            virtual WHERE email = '{env_to_addr}' and
+                                            updated >= NOW() - INTERVAL '24 HOURS';
                                             """)
                                 valid_unwraps = cur.fetchall()
                 except psycopg.OperationalError as e:
-                    logging.info(f"failed to update addr_wrap_log: {e}")
+                    logging.info(f"failed to find valid rewrite: {e}")
                 logging.debug(
                     f"debug: Header from: {hdr_from_addr} is remote, Header To: {hdr_to_addr} is wrapped local [{self.id}]"
                 )
@@ -288,7 +288,7 @@ class EnvelopeMilter(Milter.Base):
                     new_hdr_from_addr = (
                         f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
                     )
-                    update_addr_wrap_log(hdr_from_addr, queue_id)
+                    update_addr_wrap_log(hdr_from_addr, new_hdr_from_addr)
                     forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
                     self.chgfrom(forwarding_addr)
                     self.chgheader(
@@ -330,7 +330,7 @@ class EnvelopeMilter(Milter.Base):
                         0,
                         new_hdr_from_addr,
                     )
-                    update_addr_wrap_log(hdr_from_addr, queue_id)
+                    update_addr_wrap_log(hdr_from_addr, new_hdr_from_addr)
                     new_forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
                     self.chgfrom(new_forwarding_addr)
                     logging.info(
