@@ -134,6 +134,7 @@ def check_dmarc(email_addr):
     matches = ["reject", "quarantine"]
     domain = email_addr.split("@")[1].replace(">", "")
     dmarc_status = checkdmarc.check_dmarc(domain)
+    logging.debug(f"dmarc status is {dmarc_status}")
     if "tags" in dmarc_status:
         if any(x in dmarc_status["tags"]["p"]["value"] for x in matches):
             return True
@@ -145,6 +146,7 @@ def check_spf(email_addr):
     matches = ["softfail", "fail"]
     domain = email_addr.split("@")[1]
     spf_status = checkdmarc.check_spf(domain)
+    logging.debug(f"spf status is {spf_status}")
     if "parsed" in spf_status:
         if any(x in spf_status["parsed"]["all"] for x in matches):
             return True
