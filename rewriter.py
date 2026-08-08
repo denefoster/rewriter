@@ -22,7 +22,7 @@ rewrite_domain_map = {
 }
 
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
-http_listening_port = os.environ.get("HTTP_LISTENING_PORT", "8000")
+http_listening_port = os.environ.get("HTTP_LISTENING_PORT", "8000"")
 log_level = os.environ.get("LOG_LEVEL", "INFO")
 logging_procname = os.environ.get("LOGGING_PROCNAME", "milter/rewriter")
 logging_filename = os.environ.get("LOGGING_FILENAME", "/var/log/rewrite.log")
@@ -332,7 +332,7 @@ def main():
         Milter.runmilter("EnvelopeMilter", "inet:" + milter_listening_port, timeout)
 
     def run_http():
-        server_address = ("", http_listening_port)
+        server_address = ("", int(http_listening_port))
         # Create an instance of the threaded HTTP server
         httpd = ThreadingHTTPServer(server_address, SimpleHTTPRequestHandler)
         httpd.serve_forever()
