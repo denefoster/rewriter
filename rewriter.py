@@ -299,7 +299,10 @@ class EnvelopeMilter(Milter.Base):
                 logging.debug(f"{queue_id} debug: Fall through [{self.id}]")
                 logging.debug(f"{queue_id} debug: env_from is {env_from_addr} [{self.id}]")
                 logging.debug(f"{queue_id} debug: rewrite_domains are {rewrite_domain_map} [{self.id}]")
-                rewrite_domain = rewrite_domain_map[env_from_addr.split("@")[1]]
+                try:
+                    rewrite_domain = rewrite_domain_map[env_from_addr.split("@")[1]]
+                except:
+                    rewrite_domain = forwarding_domain
                 logging.info(f"rewrite domain is {rewrite_domain}")
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = (
