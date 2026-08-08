@@ -17,9 +17,12 @@ forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 rewrite_domains = os.environ.get("REWRITE_DOMAINS", "map[mydomain.com:dmarc.mydomain.com]")
 
+
 rewrite_domain_map = {
     x.split(":")[0]: x.split(":")[1] for x in rewrite_domains[4:-1].split(" ")
 }
+
+rewrite_domain_reverse_map = dict(map(reversed,rewrite_domain_map.items()))
 
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
 http_listening_port = os.environ.get("HTTP_LISTENING_PORT", "8000")
@@ -115,14 +118,14 @@ def get_db_pool() -> ConnectionPool:
 
 def test_virtual_alias(email_addr):
     with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
-        cur.execute("SELECT email from virtual where email = %s", (email_addr,))
+        cur.execute("SELECT email from virtual where email = %s", (email_addr.lower(),))
         result = cur.fetchall()
     return len(result) > 0
 
 
 def check_dmarc(email_addr):
     matches = ["reject", "quarantine"]
-    domain = email_addr.split("@")[1].replace(">", "")
+    domain = email_addr.rsplit("@")[1].lower()
     dmarc_status = checkdmarc.check_dmarc(domain)
     logging.debug(f"dmarc status is {dmarc_status}")
     if "tags" in dmarc_status:
@@ -134,7 +137,7 @@ def check_dmarc(email_addr):
 
 def check_spf(email_addr):
     matches = ["softfail", "fail"]
-    domain = email_addr.split("@")[1]
+    domain = email_addr.rsplit("@")[1].lower()
     spf_status = checkdmarc.check_spf(domain)
     logging.debug(f"spf status is {spf_status}")
     if "parsed" in spf_status:
@@ -144,12 +147,9 @@ def check_spf(email_addr):
         return False
 
 def check_local(email_addr):
-    try:
-        local_domain_list = local_domains.split(" ")
-        domain = email_addr.split("@")[-1]
-        return bool(len(set(local_domain_list).intersection(set(domain.split(" ")))))
-    except AttributeError:
-        return False
+    local_domain_list = local_domains.split(" ")
+    domain = email_addr.rsplit("@")[1].lower()
+    return domain in local_domain_list
 
 def update_addr_wrap_log(email_addr, new_email_addr):
     update_addr_wrap_log = """
@@ -204,7 +204,7 @@ class EnvelopeMilter(Milter.Base):
 
             # scenario 1
             if wrapped_mailmatch.match(env_to_addr):
-                unwrapped_addr = env_to_addr.split("@")[0].replace("=40", "@")
+                unwrapped_addr = env_to_addr.rsplit("@")[0].replace("=40", "@")
                 try:
                     with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
                         cur.execute("""
@@ -231,8 +231,9 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(f"{queue_id} unwrap: failed to find valid unwrapping addr for {env_to_addr}")
                     return Milter.REJECT
             elif listbounce_mailmatch.match(env_to_addr):
-                unwrapped_domain = [key for key, val in rewrite_domain_map.items() if val == env_to_addr.split('@')[1]][0]
-                unwrapped_addr = env_to_addr.split("@")[1].replace(env_to_addr.split('@')[1], unwrapped_domain)
+                unwrapped_domain = rewrite_domain_reverse_map.get(env_to_addr.rsplit('@')[1].lower(), "oops")
+
+                unwrapped_addr = env_to_addr.rsplit("@")[1].replace(env_to_addr.rsplit('@')[1], unwrapped_domain)
                 logging.info(f"{queue_id} unwrap: list bounce unwrapped from {env_to_addr} to {unwrapped_addr}")
 
                 self.delrcpt(env_to_addr)
@@ -286,7 +287,7 @@ class EnvelopeMilter(Milter.Base):
                 logging.debug(f"{queue_id} debug: env_from is {env_from_addr} [{self.id}]")
                 logging.debug(f"{queue_id} debug: rewrite_domains are {rewrite_domain_map} [{self.id}]")
                 try:
-                    rewrite_domain = rewrite_domain_map[env_from_addr.split("@")[1]]
+                    rewrite_domain = rewrite_domain_map[env_from_addr.rsplit("@")[1]]
                 except KeyError:
                     rewrite_domain = forwarding_domain
                 logging.info(f"rewrite domain is {rewrite_domain}")
@@ -317,8 +318,10 @@ class EnvelopeMilter(Milter.Base):
                     )
                 return Milter.ACCEPT
 
-        except Exception as e:
-            logging.info(f"{queue_id} error: writing log: {e} [{self.id}]")
+        finally:
+            logging.info(f"{queue_id} error: writing log: [{self.id}]")
+            #        except Exception as e:
+            #            logging.info(f"{queue_id} error: writing log: {e} [{self.id}]")
         return Milter.CONTINUE
 
 
