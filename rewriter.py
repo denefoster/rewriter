@@ -22,7 +22,7 @@ rewrite_domain_map = {
 }
 
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
-http_listening_port = os.environ.get("HTTP_LISTENING_PORT", "8000"")
+http_listening_port = os.environ.get("HTTP_LISTENING_PORT", "8000")
 log_level = os.environ.get("LOG_LEVEL", "INFO")
 logging_procname = os.environ.get("LOGGING_PROCNAME", "milter/rewriter")
 logging_filename = os.environ.get("LOGGING_FILENAME", "/var/log/rewrite.log")
