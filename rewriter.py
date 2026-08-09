@@ -125,7 +125,7 @@ def test_virtual_alias(email_addr):
 
 def check_dmarc(email_addr):
     matches = ["reject", "quarantine"]
-    domain = email_addr.rsplit("@")[1].lower()
+    domain = email_addr.rsplit("@")[-1].lower()
     dmarc_status = checkdmarc.check_dmarc(domain)
     logging.debug(f"dmarc status is {dmarc_status}")
     if "tags" in dmarc_status:
@@ -137,7 +137,7 @@ def check_dmarc(email_addr):
 
 def check_spf(email_addr):
     matches = ["softfail", "fail"]
-    domain = email_addr.rsplit("@")[1].lower()
+    domain = email_addr.rsplit("@")[-1].lower()
     spf_status = checkdmarc.check_spf(domain)
     logging.debug(f"spf status is {spf_status}")
     if "parsed" in spf_status:
@@ -148,7 +148,7 @@ def check_spf(email_addr):
 
 def check_local(email_addr):
     local_domain_list = local_domains.split(" ")
-    domain = email_addr.rsplit("@")[1].lower()
+    domain = email_addr.rsplit("@")[-1].lower()
     return domain in local_domain_list
 
 def update_addr_wrap_log(email_addr, new_email_addr):
@@ -204,6 +204,7 @@ class EnvelopeMilter(Milter.Base):
 
             # scenario 1
             if wrapped_mailmatch.match(env_to_addr):
+                # FIXME
                 unwrapped_addr = env_to_addr.rsplit("@")[0].replace("=40", "@")
                 try:
                     with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
@@ -231,6 +232,7 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(f"{queue_id} unwrap: failed to find valid unwrapping addr for {env_to_addr}")
                     return Milter.REJECT
             elif listbounce_mailmatch.match(env_to_addr):
+                # FIXME
                 unwrapped_domain = rewrite_domain_reverse_map.get(env_to_addr.rsplit('@')[1].lower(), "oops")
 
                 unwrapped_addr = env_to_addr.rsplit("@")[1].replace(env_to_addr.rsplit('@')[1], unwrapped_domain)
