@@ -251,9 +251,10 @@ class EnvelopeMilter(Milter.Base):
                     f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 if check_dmarc(hdr_from_addr):
-                    new_hdr_from_addr = (
-                        f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
-                    )
+                    new_hdr_from_addr = re.sub('@', '=40', env_from_addr) + f'@{forwarding_domain}'
+                    #new_hdr_from_addr = (
+                    #    f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
+                    #)
                     update_addr_wrap_log(hdr_from_addr, new_hdr_from_addr)
                     forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
                     self.chgfrom(forwarding_addr)
@@ -292,9 +293,10 @@ class EnvelopeMilter(Milter.Base):
                     rewrite_domain = forwarding_domain
                 logging.info(f"rewrite domain is {rewrite_domain}")
                 if check_dmarc(hdr_from_addr):
-                    new_hdr_from_addr = (
-                        f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
-                    )
+                    new_hdr_from_addr = re.sub('@', '=40', env_from_addr) + f'@{forwarding_domain}'
+                    #new_hdr_from_addr = (
+                    #    f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
+                    #)
                     self.chgheader(
                         "From",
                         0,
@@ -318,10 +320,8 @@ class EnvelopeMilter(Milter.Base):
                     )
                 return Milter.ACCEPT
 
-        except:
-            logging.info(f"{queue_id} error: writing log: [{self.id}]")
-            #        except Exception as e:
-            #            logging.info(f"{queue_id} error: writing log: {e} [{self.id}]")
+        except TypeError as e:
+            logging.info(f"{queue_id} error: writing log: {e} [{self.id}]")
         return Milter.CONTINUE
 
 
