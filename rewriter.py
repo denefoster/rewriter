@@ -318,7 +318,7 @@ class EnvelopeMilter(Milter.Base):
                     )
                 return Milter.ACCEPT
 
-        finally:
+        except:
             logging.info(f"{queue_id} error: writing log: [{self.id}]")
             #        except Exception as e:
             #            logging.info(f"{queue_id} error: writing log: {e} [{self.id}]")
