@@ -35,7 +35,7 @@ logging_format = "{asctime} milter/rewriter[{process}]: {message} [{filename}:{l
 wrapped_regex = f"[-a-zA-Z0-9._%+]+=40[-a-zA-Z0-9.]+@{forwarding_domain}"
 wrapped_mailmatch = re.compile(wrapped_regex, re.IGNORECASE)
 
-listbounce_regex = "^[-_.0-9a-z]+-bounces+[-a-zA-Z0-9._%+]+=[-a-zA-Z0-9.]+"
+listbounce_regex = "^[-_.0-9a-z]+-bounces+"
 listbounce_mailmatch = re.compile(listbounce_regex, re.IGNORECASE)
 
 logging.basicConfig(
@@ -204,7 +204,7 @@ class EnvelopeMilter(Milter.Base):
 
             # scenario 1
             if wrapped_mailmatch.match(env_to_addr):
-                unwrapped_addr = env_to_addr.rsplit(f'@{forwarding_domain}')[0].replace('=40', '@')
+                unwrapped_addr = env_to_addr.rsplit('@', 1)[0].replace('=40', '@')
                 try:
                     with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
                         cur.execute("""
@@ -231,9 +231,7 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(f"{queue_id} unwrap: failed to find valid unwrapping addr for {env_to_addr}")
                     return Milter.REJECT
             elif listbounce_mailmatch.match(env_to_addr):
-                unwrapped_domain = rewrite_domain_reverse_map.get(env_to_addr.rsplit('@')[-1].lower(), "oops")
-
-                unwrapped_addr = env_to_addr.rsplit(f'@{unwrapped_domain}')[0].replace('=40', '@')
+                unwrapped_addr = env_to_addr.rsplit('@', 1)[0].replace('=40', '@')
                 logging.info(f"{queue_id} unwrap: list bounce unwrapped from {env_to_addr} to {unwrapped_addr}")
 
                 self.delrcpt(env_to_addr)
@@ -251,12 +249,7 @@ class EnvelopeMilter(Milter.Base):
                     f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 if check_dmarc(hdr_from_addr):
-                    #new_hdr_from_addr = re.sub('@', '=40', env_from_addr) + f'@{forwarding_domain}'
-                    # FIX
                     new_hdr_from_addr = re.sub('@[^@]+$', f'=40{env_from_addr.rsplit('@')[-1]}@{forwarding_domain}', hdr_from_addr)
-                    #new_hdr_from_addr = (
-                    #    f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
-                    #)
                     update_addr_wrap_log(hdr_from_addr, new_hdr_from_addr)
                     forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
                     self.chgfrom(forwarding_addr)
@@ -290,16 +283,12 @@ class EnvelopeMilter(Milter.Base):
                 logging.debug(f"{queue_id} debug: env_from is {env_from_addr} [{self.id}]")
                 logging.debug(f"{queue_id} debug: rewrite_domains are {rewrite_domain_map} [{self.id}]")
                 try:
-                    rewrite_domain = rewrite_domain_map[env_from_addr.rsplit("@")[-1]]
+                    rewrite_domain = rewrite_domain_map[env_from_addr.rsplit("@", 1)[-1]]
                 except KeyError:
                     rewrite_domain = forwarding_domain
                 logging.info(f"rewrite domain is {rewrite_domain}")
                 if check_dmarc(hdr_from_addr):
-                    # FIX
                     new_hdr_from_addr = re.sub('@[^@]+$', f'=40{env_from_addr.rsplit('@')[-1]}@{forwarding_domain}', hdr_from_addr)
-                    #new_hdr_from_addr = (
-                    #    f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
-                    #)
                     self.chgheader(
                         "From",
                         0,
