@@ -251,10 +251,10 @@ class EnvelopeMilter(Milter.Base):
                     f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 if check_dmarc(hdr_from_addr):
-                    new_hdr_from_addr = re.sub('@', '=40', env_from_addr) + f'@{forwarding_domain}'
-                    #new_hdr_from_addr = (
-                    #    f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
-                    #)
+                    #new_hdr_from_addr = re.sub('@', '=40', env_from_addr) + f'@{forwarding_domain}'
+                    new_hdr_from_addr = (
+                        f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
+                    )
                     update_addr_wrap_log(hdr_from_addr, new_hdr_from_addr)
                     forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
                     self.chgfrom(forwarding_addr)
@@ -293,17 +293,18 @@ class EnvelopeMilter(Milter.Base):
                     rewrite_domain = forwarding_domain
                 logging.info(f"rewrite domain is {rewrite_domain}")
                 if check_dmarc(hdr_from_addr):
-                    new_hdr_from_addr = re.sub('@', '=40', env_from_addr) + f'@{forwarding_domain}'
-                    #new_hdr_from_addr = (
-                    #    f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
-                    #)
+                    #new_hdr_from_addr = re.sub('@', '=40', env_from_addr) + f'@{forwarding_domain}'
+                    new_hdr_from_addr = (
+                        f"{hdr_from_addr.replace('@', '=40')}@{forwarding_domain}"
+                    )
                     self.chgheader(
                         "From",
                         0,
                         new_hdr_from_addr,
                     )
                     update_addr_wrap_log(hdr_from_addr, new_hdr_from_addr)
-                    new_forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
+                    #new_forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
+                    new_forwarding_addr = re.sub('@(?:.(?!@))+$', f'=40{env_from_addr.rsplit('@')[-1]}@{rewrite_domain}', env_from_addr)
                     self.chgfrom(new_forwarding_addr)
                     logging.info(
                         f"{queue_id} rewrite-both: Envelope-From changed from {env_from_addr} to {new_forwarding_addr} header-From changed from {hdr_from_addr} to {new_hdr_from_addr} [{self.id}]"
@@ -312,7 +313,8 @@ class EnvelopeMilter(Milter.Base):
                     logging.info(
                         f"{queue_id} rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr} [{self.id}]"
                     )
-                    new_forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
+                    new_forwarding_addr = re.sub('@(?:.(?!@))+$', f'=40{env_from_addr.rsplit('@')[-1]}@{rewrite_domain}', env_from_addr)
+                    #new_forwarding_addr = re.sub('@.*', '@' + rewrite_domain, env_from_addr)
                     self.chgfrom(new_forwarding_addr)
                 else:
                     logging.info(
