@@ -293,7 +293,7 @@ class EnvelopeMilter(Milter.Base):
                     self.chgheader(
                         "From",
                         0,
-                        new_hdr_from_addr,
+                        f'{_hdr_from_name} {new_hdr_from_addr}',
                     )
                     update_addr_wrap_log(hdr_from_addr, new_hdr_from_addr)
                     new_forwarding_addr = re.sub('@[^@]+$', f'=40{env_from_addr.rsplit('@')[-1]}@{rewrite_domain}', env_from_addr)
