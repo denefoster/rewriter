@@ -282,6 +282,7 @@ class EnvelopeMilter(Milter.Base):
                 logging.debug(f"{queue_id} debug: Fall through [{self.id}]")
                 logging.debug(f"{queue_id} debug: env_from is {env_from_addr} [{self.id}]")
                 logging.debug(f"{queue_id} debug: rewrite_domains are {rewrite_domain_map} [{self.id}]")
+                logging.debug(f"{queue_id} debug: header from name is {_hdr_from_name} [{self.id}]")
                 try:
                     rewrite_domain = rewrite_domain_map[env_from_addr.rsplit("@", 1)[-1]]
                 except KeyError:
