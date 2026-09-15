@@ -16,6 +16,8 @@ forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 rewrite_domains = os.environ.get("REWRITE_DOMAINS", "map[mydomain.com:dmarc.mydomain.com]")
+ignore_list = os.environ.get("IGNORELIST", "support@ietf.org")
+ignore_list = ignore_list.split(',')
 
 
 rewrite_domain_map = {
@@ -32,7 +34,7 @@ logging_filename = os.environ.get("LOGGING_FILENAME", "/var/log/rewrite.log")
 logging_rotate_period = os.environ.get("LOGGING_ROTATE_PERIOD", "D")
 logging_format = "{asctime} milter/rewriter[{process}]: {message} [{filename}:{lineno}]"
 
-wrapped_regex = f"[-a-zA-Z0-9._%+]+=40[-a-zA-Z0-9.]+@{forwarding_domain}"
+wrapped_regex = f"[-a-zA-Z0-9._%+]+(?<!-bounce)(?<!-bounces)=40[-a-zA-Z0-9.]+@{forwarding_domain}"
 wrapped_mailmatch = re.compile(wrapped_regex, re.IGNORECASE)
 
 listbounce_regex = "^[-_.0-9a-z]+-bounces+"
@@ -115,13 +117,14 @@ def get_db_pool() -> ConnectionPool:
     pool.open(wait=True)
     return pool
 
-
 def test_virtual_alias(email_addr):
-    with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
-        cur.execute("SELECT email from virtual where email = %s", (email_addr.lower(),))
-        result = cur.fetchall()
-    return len(result) > 0
-
+    if email_addr not in ignore_list:
+        with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
+            cur.execute("SELECT email from virtual where email = %s", (email_addr.lower(),))
+            result = cur.fetchall()
+        return len(result) > 0
+    else:
+        return False
 
 def check_dmarc(email_addr):
     matches = ["reject", "quarantine"]
