@@ -255,12 +255,12 @@ class EnvelopeMilter(Milter.Base):
                     return Milter.ACCEPT
 
             # scenario 2
-            elif test_local_list(env_to_addr):
+            elif test_local_list(self.mail_to):
                 logging.info(
                     f"{queue_id} none: Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 return Milter.ACCEPT
-            elif test_virtual_alias(env_to_addr):
+            elif test_virtual_alias(self.mail_to):
                 logging.debug(
                     f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
