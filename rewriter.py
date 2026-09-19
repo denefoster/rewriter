@@ -187,7 +187,8 @@ class EnvelopeMilter(Milter.Base):
         return Milter.CONTINUE
 
     def envrcpt(self, to, *str):
-        self.mail_to.append(to.lower())
+        lower_to = to.lower()
+        self.mail_to.append(email.utils.parseaddr(lower_to)[1])
         return Milter.CONTINUE
 
     def header(self, name, value):
