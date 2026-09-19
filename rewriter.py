@@ -223,7 +223,7 @@ class EnvelopeMilter(Milter.Base):
                                     SELECT email FROM
                                     virtual WHERE email = %s and
                                     updated >= NOW() - INTERVAL '7 DAYS';
-                                    """, (env_to_addr,))
+                                    """, (self.mail_to[0],))
                         valid_unwraps = cur.fetchall()
                 except psycopg.OperationalError as e:
                     logging.info(f"failed to find valid rewrite: {e}")
@@ -233,19 +233,19 @@ class EnvelopeMilter(Milter.Base):
                     f"debug: Header from: {hdr_from_addr} is remote, Header To: {hdr_to_addr} is wrapped local [{self.id}]"
                 )
                 logging.info(
-                    f"{queue_id} unwrap: from {env_to_addr} to {unwrapped_addr} [{self.id}]"
+                    f"{queue_id} unwrap: from {self.mail_to[0]} to {unwrapped_addr} [{self.id}]"
                 )
                 if len(valid_unwraps) > 0:
-                    self.delrcpt(env_to_addr)
+                    self.delrcpt(self.mail_to[0])
                     self.addrcpt(f"<{unwrapped_addr}>")
                     return Milter.ACCEPT
                 else:
-                    logging.info(f"{queue_id} unwrap: failed to find valid unwrapping addr for {env_to_addr}")
+                    logging.info(f"{queue_id} unwrap: failed to find valid unwrapping addr for {self.mail_to[0]}")
                     return Milter.REJECT
             if any((match := listbounce_mailmatch.search(item)) for item in self.mail_to):
-                if env_to_addr.rsplit('@', 1)[-1] in rewrite_domain_reverse_map:
+                if self.mail_to[0].rsplit('@', 1)[-1] in rewrite_domain_reverse_map:
                     unwrapped_addr = self.mail_to[0].rsplit('@', 1)[0].replace('=40', '@')
-                    logging.info(f"{queue_id} unwrap: list bounce unwrapped from {env_to_addr} to {unwrapped_addr}")
+                    logging.info(f"{queue_id} unwrap: list bounce unwrapped from {self.mail_to[0]} to {unwrapped_addr}")
 
                     self.delrcpt(env_to_addr)
                     self.addrcpt(f"<{unwrapped_addr}>")
