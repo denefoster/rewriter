@@ -247,22 +247,22 @@ class EnvelopeMilter(Milter.Base):
                     unwrapped_addr = self.mail_to[0].rsplit('@', 1)[0].replace('=40', '@')
                     logging.info(f"{queue_id} unwrap: list bounce unwrapped from {self.mail_to[0]} to {unwrapped_addr}")
 
-                    self.delrcpt(env_to_addr)
+                    self.delrcpt(self.mail_to[0])
                     self.addrcpt(f"<{unwrapped_addr}>")
                     return Milter.ACCEPT
                 else:
-                    logging.info(f"{queue_id} none: list bounce already unwrapped {env_to_addr}")
+                    logging.info(f"{queue_id} none: list bounce already unwrapped {self.mail_to[0]}")
                     return Milter.ACCEPT
 
             # scenario 2
             elif test_local_list(self.mail_to):
                 logging.info(
-                    f"{queue_id} none: Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
+                    f"{queue_id} none: Local list recipient, no action needed Envelope-To: {self.mail_to} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 return Milter.ACCEPT
             elif test_virtual_alias(self.mail_to):
                 logging.debug(
-                    f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
+                    f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {self.mail_to} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
                 if check_dmarc(hdr_from_addr):
