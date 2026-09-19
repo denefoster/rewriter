@@ -28,7 +28,7 @@ rewrite_domain_reverse_map = dict(map(reversed,rewrite_domain_map.items()))
 
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
 http_listening_port = os.environ.get("HTTP_LISTENING_PORT", "8000")
-log_level = os.environ.get("LOG_LEVEL", "INFO")
+log_level = os.environ.get("LOG_LEVEL", "DEBUG")
 logging_procname = os.environ.get("LOGGING_PROCNAME", "milter/rewriter")
 logging_filename = os.environ.get("LOGGING_FILENAME", "/var/log/rewrite.log")
 logging_rotate_period = os.environ.get("LOGGING_ROTATE_PERIOD", "D")
@@ -118,16 +118,16 @@ def get_db_pool() -> ConnectionPool:
     return pool
 
 def test_local_list(email_addr):
-    email_addr = email_addr.lower()
     with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
-        cur.execute("SELECT list from mailman_lists where list = ANY(%s)", [email_addr.split(',')])
+        cur.execute("SELECT list from mailman_lists where list = ANY(%s)", [email_addr])
         result = cur.fetchall()
         return len(result) > 0
 
 def test_virtual_alias(email_addr):
-    if email_addr not in ignore_list:
+    should_ignore = list(set(ignore_list) & set(email_addr))
+    if not should_ignore:
         with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
-            cur.execute("SELECT email from virtual where email = %s", (email_addr.lower(),))
+            cur.execute("SELECT email from virtual where email = ANY(%s)", [email_addr])
             result = cur.fetchall()
         return len(result) > 0
     else:
@@ -178,15 +178,16 @@ def update_addr_wrap_log(email_addr, new_email_addr):
 class EnvelopeMilter(Milter.Base):
     def __init__(self):
         self.id = Milter.uniqueID()
+        self.mail_to = []
         self.mail_from = None
         self.header_from = None
 
     def envfrom(self, f, *str):
-        self.mail_from = f
+        self.mail_from = f.lower()
         return Milter.CONTINUE
 
     def envrcpt(self, to, *str):
-        self.mail_to = to
+        self.mail_to.append(to.lower())
         return Milter.CONTINUE
 
     def header(self, name, value):
@@ -209,7 +210,7 @@ class EnvelopeMilter(Milter.Base):
             _hdr_from_name, hdr_from_addr = email.utils.parseaddr(self.header_from)
             env_from_addr = email.utils.parseaddr(self.mail_from)[1]
             hdr_to_addr = email.utils.parseaddr(self.header_to)
-            env_to_addr = email.utils.parseaddr(self.mail_to)[1]
+            env_to_addr = email.utils.parseaddr(self.mail_to)
             queue_id = self.getsymval('i') # authenticated user
 
             # scenario 1
