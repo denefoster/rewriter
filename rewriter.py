@@ -307,6 +307,9 @@ class EnvelopeMilter(Milter.Base):
                     rewrite_domain = forwarding_domain
                 logging.info(f"rewrite domain is {rewrite_domain}")
                 if  len(list(set(ignore_list) & set(self.mail_to))):
+                    logging.info(
+                        f"{queue_id} none: Envelope To {self.mail_to} contains an ignore list entry"
+                    )
                     return Milter.ACCEPT
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = re.sub('@[^@]+$', f'=40{hdr_from_addr.rsplit('@')[-1]}@{forwarding_domain}', hdr_from_addr)
