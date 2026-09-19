@@ -16,7 +16,7 @@ forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 rewrite_domains = os.environ.get("REWRITE_DOMAINS", "map[mydomain.com:dmarc.mydomain.com]")
-ignore_list = os.environ.get("IGNORELIST", "support@ietf.org,alldanes@lists.sys.slush.ca")
+ignore_list = os.environ.get("IGNORELIST", "alldanes@lists.sys.slush.ca")
 ignore_list = ignore_list.split(',')
 
 
