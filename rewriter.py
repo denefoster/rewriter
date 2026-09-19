@@ -214,8 +214,8 @@ class EnvelopeMilter(Milter.Base):
             queue_id = self.getsymval('i') # authenticated user
 
             # scenario 1
-            if wrapped_mailmatch.match(env_to_addr):
-                unwrapped_addr = env_to_addr.rsplit('@', 1)[0].replace('=40', '@')
+            if any((match := wrapped_mailmatch.search(item)) for item in self.mail_to):
+                unwrapped_addr = self.mail_to[0].rsplit('@', 1)[0].replace('=40', '@')
                 try:
                     with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
                         cur.execute("""
@@ -241,9 +241,9 @@ class EnvelopeMilter(Milter.Base):
                 else:
                     logging.info(f"{queue_id} unwrap: failed to find valid unwrapping addr for {env_to_addr}")
                     return Milter.REJECT
-            elif listbounce_mailmatch.match(env_to_addr):
+            if any((match := listbounce_mailmatch.search(item)) for item in self.mail_to):
                 if env_to_addr.rsplit('@', 1)[-1] in rewrite_domain_reverse_map:
-                    unwrapped_addr = env_to_addr.rsplit('@', 1)[0].replace('=40', '@')
+                    unwrapped_addr = self.mail_to[0].rsplit('@', 1)[0].replace('=40', '@')
                     logging.info(f"{queue_id} unwrap: list bounce unwrapped from {env_to_addr} to {unwrapped_addr}")
 
                     self.delrcpt(env_to_addr)
@@ -254,12 +254,12 @@ class EnvelopeMilter(Milter.Base):
                     return Milter.ACCEPT
 
             # scenario 2
-            elif check_local(env_to_addr) and test_local_list(env_to_addr):
+            elif test_local_list(env_to_addr):
                 logging.info(
                     f"{queue_id} none: Local list recipient, no action needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 return Milter.ACCEPT
-            elif check_local(env_to_addr) and test_virtual_alias(env_to_addr):
+            elif test_virtual_alias(env_to_addr):
                 logging.debug(
                     f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {env_to_addr} Header-To: {hdr_to_addr} [{self.id}]"
                 )
