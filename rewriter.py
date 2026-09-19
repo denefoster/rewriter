@@ -28,7 +28,7 @@ rewrite_domain_reverse_map = dict(map(reversed,rewrite_domain_map.items()))
 
 milter_listening_port = os.environ.get("LISTENING_PORT", "8800")
 http_listening_port = os.environ.get("HTTP_LISTENING_PORT", "8000")
-log_level = os.environ.get("LOG_LEVEL", "DEBUG")
+log_level = os.environ.get("LOG_LEVEL", "INFO")
 logging_procname = os.environ.get("LOGGING_PROCNAME", "milter/rewriter")
 logging_filename = os.environ.get("LOGGING_FILENAME", "/var/log/rewrite.log")
 logging_rotate_period = os.environ.get("LOGGING_ROTATE_PERIOD", "D")
@@ -181,6 +181,7 @@ class EnvelopeMilter(Milter.Base):
         self.mail_to = []
         self.mail_from = None
         self.header_from = None
+        self.header_to = None
 
     def envfrom(self, f, *str):
         self.mail_from = f.lower()
