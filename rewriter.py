@@ -16,7 +16,7 @@ forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.
 forwarding_domain = os.environ.get("FORWARDING_DOMAIN", "myaddr.com")
 local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 rewrite_domains = os.environ.get("REWRITE_DOMAINS", "map[mydomain.com:dmarc.mydomain.com]")
-ignore_list = os.environ.get("IGNORELIST", "support@ietf.org")
+ignore_list = os.environ.get("IGNORELIST", "support@ietf.org,alldanes@lists.sys.slush.ca")
 ignore_list = ignore_list.split(',')
 
 
@@ -306,6 +306,8 @@ class EnvelopeMilter(Milter.Base):
                 except KeyError:
                     rewrite_domain = forwarding_domain
                 logging.info(f"rewrite domain is {rewrite_domain}")
+                if  len(list(set(ignore_list) & set(self.mail_to))):
+                    return Milter.ACCEPT
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = re.sub('@[^@]+$', f'=40{hdr_from_addr.rsplit('@')[-1]}@{forwarding_domain}', hdr_from_addr)
                     self.chgheader(
