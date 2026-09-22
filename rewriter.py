@@ -333,6 +333,8 @@ class EnvelopeMilter(Milter.Base):
                          self.chgfrom(new_forwarding_addr)
                     except Milter.error:
                         return Milter.ACCEPT
+                    else:
+                        return Milter.ACCEPT
                 else:
                     logging.info(
                         f"{queue_id} none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr} [{self.id}]"
