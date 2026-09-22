@@ -351,7 +351,7 @@ def main():
     timeout = 600
 
     Milter.factory = EnvelopeMilter
-    Milter.set_flags(Milter.ADDHDRS)
+    Milter.set_flags(Milter.ADDHDRS | Milter.CHGFROM | Milter.CHGHDRS)
 
     def run_milter():
         Milter.runmilter("EnvelopeMilter", "inet:" + milter_listening_port, timeout)
