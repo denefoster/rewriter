@@ -329,7 +329,10 @@ class EnvelopeMilter(Milter.Base):
                         f"{queue_id} rewrite-envelope: SPF only, Header-From: {hdr_from_addr} Envelope-From: {env_from_addr} [{self.id}]"
                     )
                     new_forwarding_addr = re.sub('@[^@]+$', f'=40{env_from_addr.rsplit('@')[-1]}@{rewrite_domain}', env_from_addr)
-                    self.chgfrom(new_forwarding_addr)
+                    try:
+                         self.chgfrom(new_forwarding_addr)
+                    except Milter.error:
+                        return Milter.ACCEPT
                 else:
                     logging.info(
                         f"{queue_id} none: No change for Envelope-From {env_from_addr} or Header-From {hdr_from_addr} [{self.id}]"
