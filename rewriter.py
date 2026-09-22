@@ -331,8 +331,6 @@ class EnvelopeMilter(Milter.Base):
                     new_forwarding_addr = re.sub('@[^@]+$', f'=40{env_from_addr.rsplit('@')[-1]}@{rewrite_domain}', env_from_addr)
                     try:
                          self.chgfrom(new_forwarding_addr)
-                    except Milter.error as e:
-                        logging.info(f"{queue_id} error: chgfrom failed: {e} [{self.id}]")
                     except Exception as e:
                         logging.info(f"{queue_id} error: chgfrom failed: {e} [{self.id}]")
                     return Milter.ACCEPT
