@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import email.utils
+from expiringdict import ExpiringDict
 import logging
 import os
 import re
@@ -18,7 +19,9 @@ local_domains = os.environ.get("LOCAL_DOMAINS", forwarding_domain)
 rewrite_domains = os.environ.get("REWRITE_DOMAINS", "map[mydomain.com:dmarc.mydomain.com]")
 ignore_list = os.environ.get("IGNORELIST", "alldanes@lists.sys.slush.ca")
 ignore_list = ignore_list.split(',')
+mailman_sasl_user = os.environ.get("MAILMAN_SASL_USER", "mailman@ietf.org").lower()
 
+_policy_cache = ExpiringDict(max_len=10000, max_age_seconds=3600)
 
 rewrite_domain_map = {
     x.split(":")[0]: x.split(":")[1] for x in rewrite_domains[4:-1].split(" ")
@@ -73,7 +76,8 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/healthz":
             try:
-                with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
+                with get_db_pool().connection() as conn, conn.cursor() as cur:
+
                     cur.execute("SELECT email from virtual LIMIT 1")
                     cur.fetchall()
                     self.send_response(200)
@@ -99,9 +103,11 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"Not OK")
 
 
+_db_pool = None
 def get_db_pool() -> ConnectionPool:
-    try:
-        pool = ConnectionPool(
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = ConnectionPool(
             kwargs={
                 "dbname": os.getenv("DB_NAME", "postfix"),
                 "host": os.getenv("DB_HOST", "localhost"),
@@ -110,15 +116,13 @@ def get_db_pool() -> ConnectionPool:
                 "port": os.getenv("DB_PORT", "5432"),
             },
             check=ConnectionPool.check_connection,
+            open=True,
         )
-    except psycopg.OperationalError as e:
-        logging.info(f"DB Error: {e}")
-        raise
-    pool.open(wait=True)
-    return pool
+    return _db_pool
+
 
 def test_local_list(email_addr):
-    with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
+    with get_db_pool().connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT list from mailman_lists where list = ANY(%s)", [email_addr])
         result = cur.fetchall()
         return len(result) > 0
@@ -126,35 +130,43 @@ def test_local_list(email_addr):
 def test_virtual_alias(email_addr):
     should_ignore = list(set(ignore_list) & set(email_addr))
     if not should_ignore:
-        with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
+        with get_db_pool().connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT email from virtual where email = ANY(%s)", [email_addr])
             result = cur.fetchall()
         return len(result) > 0
     else:
         return False
 
-def check_dmarc(email_addr):
+def _check_dmarc_uncached(domain):
     matches = ["reject", "quarantine"]
-    domain = email_addr.rsplit("@")[-1].lower()
     dmarc_status = checkdmarc.check_dmarc(domain)
     logging.debug(f"dmarc status is {dmarc_status}")
     if "tags" in dmarc_status:
-        if any(x in dmarc_status["tags"]["p"]["value"] for x in matches):
-            return True
-    else:
-        return False
+        return any(x in dmarc_status["tags"]["p"]["value"] for x in matches)
+    return False
 
-
-def check_spf(email_addr):
+def _check_spf_uncached(domain):
     matches = ["softfail", "fail"]
-    domain = email_addr.rsplit("@")[-1].lower()
     spf_status = checkdmarc.check_spf(domain)
     logging.debug(f"spf status is {spf_status}")
     if "parsed" in spf_status:
-        if any(x in spf_status["parsed"]["all"] for x in matches):
-            return True
-    else:
-        return False
+        return any(x in spf_status["parsed"]["all"] for x in matches)
+    return False
+
+def _cached(kind, fn, email_addr):
+    domain = email_addr.rsplit("@")[-1].lower()
+    key = (kind, domain)
+    result = _policy_cache.get(key)
+    if result is None:
+        result = fn(domain)
+        _policy_cache[key] = result
+    return result
+
+def check_dmarc(email_addr):
+    return _cached("dmarc", _check_dmarc_uncached, email_addr)
+
+def check_spf(email_addr):
+    return _cached("spf", _check_spf_uncached, email_addr)
 
 def check_local(email_addr):
     local_domain_list = local_domains.split(" ")
@@ -169,7 +181,7 @@ def update_addr_wrap_log(email_addr, new_email_addr):
     UPDATE SET updated = now();
     """
     try:
-        with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
+        with get_db_pool().connection() as conn, conn.cursor() as cur:
             cur.execute(update_addr_wrap_log, (new_email_addr, email_addr,))
     except psycopg.OperationalError as e:
         logging.info(f"failed to update addr_wrap_log: {e}")
@@ -184,6 +196,10 @@ class EnvelopeMilter(Milter.Base):
         self.header_to = None
 
     def envfrom(self, f, *str):
+        # one milter instance serves every message on an SMTP connection
+        self.mail_to = []
+        self.header_from = None
+        self.header_to = None
         self.mail_from = f.lower()
         return Milter.CONTINUE
 
@@ -214,6 +230,10 @@ class EnvelopeMilter(Milter.Base):
             hdr_to_addr = email.utils.parseaddr(self.header_to)
             env_to_addr = email.utils.parseaddr(self.mail_to)
             queue_id = self.getsymval('i') # authenticated user
+            # mailman batches mix subscribers, so a wrapped recipient in the
+            # batch must not skip the dmarc check below
+            auth_user = (self.getsymval('{auth_authen}') or '').lower()
+            list_fanout = auth_user == mailman_sasl_user and bool(listbounce_mailmatch.search(env_from_addr))
 
             # scenario 1
             if any((match := wrapped_mailmatch.search(item)) for item in self.mail_to):
@@ -221,11 +241,11 @@ class EnvelopeMilter(Milter.Base):
                     if wrapped_mailmatch.search(addr):
                         unwrapped_addr = addr.rsplit('@', 1)[0].replace('=40', '@')
                         try:
-                            with get_db_pool() as pool, pool.connection() as connection, connection.cursor() as cur:
+                            with get_db_pool().connection() as conn, conn.cursor() as cur:
                                 cur.execute("""
                                             SELECT email FROM
                                             virtual WHERE email = %s and
-                                            updated >= NOW() - INTERVAL '7 DAYS';
+                                            updated >= NOW() - INTERVAL '30 DAYS';
                                             """, (addr,))
                                 valid_unwraps = cur.fetchall()
                         except psycopg.OperationalError as e:
@@ -243,10 +263,20 @@ class EnvelopeMilter(Milter.Base):
                         if len(valid_unwraps) > 0:
                             self.delrcpt(addr)
                             self.addrcpt(f"<{unwrapped_addr}>")
+                            self.mail_to[self.mail_to.index(addr)] = unwrapped_addr
                         else:
                             logging.info(f"{queue_id} unwrap: failed to find valid unwrapping addr for {addr}")
-                return Milter.ACCEPT
-            if any((match := listbounce_mailmatch.search(item)) for item in self.mail_to):
+                if not list_fanout:
+                    return Milter.ACCEPT
+            if list_fanout:
+                for addr in self.mail_to:
+                    if listbounce_mailmatch.search(addr) and addr.rsplit('@', 1)[-1] in rewrite_domain_reverse_map:
+                        unwrapped_addr = addr.rsplit('@', 1)[0].replace('=40', '@')
+                        logging.info(f"{queue_id} unwrap: list bounce unwrapped from {addr} to {unwrapped_addr}")
+                        self.delrcpt(addr)
+                        self.addrcpt(f"<{unwrapped_addr}>")
+                        self.mail_to[self.mail_to.index(addr)] = unwrapped_addr
+            if not list_fanout and any((match := listbounce_mailmatch.search(item)) for item in self.mail_to):
                 if self.mail_to[0].rsplit('@', 1)[-1] in rewrite_domain_reverse_map:
                     unwrapped_addr = self.mail_to[0].rsplit('@', 1)[0].replace('=40', '@')
                     logging.info(f"{queue_id} unwrap: list bounce unwrapped from {self.mail_to[0]} to {unwrapped_addr}")
