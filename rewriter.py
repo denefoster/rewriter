@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
+import email.errors
 import email.utils
+from email.header import decode_header, make_header
+
 from expiringdict import ExpiringDict
 import logging
 import os
@@ -21,7 +24,7 @@ ignore_list = os.environ.get("IGNORELIST", "alldanes@lists.sys.slush.ca")
 ignore_list = ignore_list.split(',')
 mailman_sasl_user = os.environ.get("MAILMAN_SASL_USER", "mailman@ietf.org").lower()
 
-_policy_cache = ExpiringDict(max_len=10000, max_age_seconds=3600)
+_policy_cache = ExpiringDict(max_len=50000, max_age_seconds=1800)
 
 rewrite_domain_map = {
     x.split(":")[0]: x.split(":")[1] for x in rewrite_domains[4:-1].split(" ")
@@ -94,8 +97,13 @@ class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 # Write the response content
                 self.wfile.write(b"Not OK")
+        elif self.path == "/livez":
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"OK")
         else:
-            self.send_response(400)
+            self.send_response(404)
             # Set the response headers
             self.send_header("Content-type", "text/plain")
             self.end_headers()
@@ -117,6 +125,7 @@ def get_db_pool() -> ConnectionPool:
             },
             check=ConnectionPool.check_connection,
             open=True,
+            timeout=5,
         )
     return _db_pool
 
@@ -139,18 +148,22 @@ def test_virtual_alias(email_addr):
 
 def _check_dmarc_uncached(domain):
     matches = ["reject", "quarantine"]
-    dmarc_status = checkdmarc.check_dmarc(domain)
+    dmarc_status = checkdmarc.check_dmarc(domain, timeout=1.0, timeout_retries=2)
     logging.debug(f"dmarc status is {dmarc_status}")
     if "tags" in dmarc_status:
         return any(x in dmarc_status["tags"]["p"]["value"] for x in matches)
+    if "timed out" in dmarc_status.get("error", "").lower():
+        return None
     return False
 
 def _check_spf_uncached(domain):
     matches = ["softfail", "fail"]
-    spf_status = checkdmarc.check_spf(domain)
+    spf_status = checkdmarc.check_spf(domain, timeout=1.0, timeout_retries=2)
     logging.debug(f"spf status is {spf_status}")
     if "parsed" in spf_status:
         return any(x in spf_status["parsed"]["all"] for x in matches)
+    if "timed out" in spf_status.get("error", "").lower():
+        return None
     return False
 
 def _cached(kind, fn, email_addr):
@@ -159,14 +172,31 @@ def _cached(kind, fn, email_addr):
     result = _policy_cache.get(key)
     if result is None:
         result = fn(domain)
-        _policy_cache[key] = result
-    return result
+        if result is not None:
+            _policy_cache[key] = result
+    return bool(result)
 
 def check_dmarc(email_addr):
     return _cached("dmarc", _check_dmarc_uncached, email_addr)
 
 def check_spf(email_addr):
     return _cached("spf", _check_spf_uncached, email_addr)
+
+def format_from_header(name, addr):
+    # parseaddr() hands back the raw display name: it may be RFC 2047
+    # encoded, raw UTF-8, or contain quotes.  Decode it to text and let
+    # formataddr() quote, escape or re-encode it as needed.
+    if not name:
+        return addr
+    try:
+        display = str(make_header(decode_header(name)))
+    except (email.errors.HeaderParseError, LookupError, UnicodeDecodeError):
+        display = name
+    try:
+        return email.utils.formataddr((display, addr))
+    except UnicodeEncodeError:
+        # non-ASCII address (SMTPUTF8); formataddr refuses those
+        return addr
 
 def check_local(email_addr):
     local_domain_list = local_domains.split(" ")
@@ -215,8 +245,25 @@ class EnvelopeMilter(Milter.Base):
             self.header_to = value
         return Milter.CONTINUE
 
+    def unwrap_list_bounces(self, queue_id):
+        # a -bounces recipient in a rewrite domain was wrapped by us on the
+        # way out (list-bounces=40list.domain@dmarc.domain); restore it
+        for i, addr in enumerate(self.mail_to):
+            if not listbounce_mailmatch.search(addr):
+                continue
+            local, domain = addr.rsplit('@', 1)
+            if domain not in rewrite_domain_reverse_map or '=40' not in local:
+                logging.info(f"{queue_id} none: list bounce already unwrapped {addr} [{self.id}]")
+                continue
+            unwrapped_addr = '@'.join(local.rsplit('=40', 1))
+            logging.info(f"{queue_id} unwrap: list bounce unwrapped from {addr} to {unwrapped_addr} [{self.id}]")
+            self.delrcpt(addr)
+            self.addrcpt(f"<{unwrapped_addr}>")
+            self.mail_to[i] = unwrapped_addr
+
     def eom(self):
         try:
+            queue_id = self.getsymval('i') # queue id
             logging.debug(
                 f"[{self.id}] Envelope-From: {self.mail_from}, Header-From: {self.header_from or 'N/A'}"
             )
@@ -228,8 +275,6 @@ class EnvelopeMilter(Milter.Base):
             _hdr_from_name, hdr_from_addr = email.utils.parseaddr(self.header_from)
             env_from_addr = email.utils.parseaddr(self.mail_from)[1]
             hdr_to_addr = email.utils.parseaddr(self.header_to)
-            env_to_addr = email.utils.parseaddr(self.mail_to)
-            queue_id = self.getsymval('i') # authenticated user
             # mailman batches mix subscribers, so a wrapped recipient in the
             # batch must not skip the dmarc check below
             auth_user = (self.getsymval('{auth_authen}') or '').lower()
@@ -268,25 +313,12 @@ class EnvelopeMilter(Milter.Base):
                             logging.info(f"{queue_id} unwrap: failed to find valid unwrapping addr for {addr}")
                 if not list_fanout:
                     return Milter.ACCEPT
-            if list_fanout:
-                for addr in self.mail_to:
-                    if listbounce_mailmatch.search(addr) and addr.rsplit('@', 1)[-1] in rewrite_domain_reverse_map:
-                        unwrapped_addr = addr.rsplit('@', 1)[0].replace('=40', '@')
-                        logging.info(f"{queue_id} unwrap: list bounce unwrapped from {addr} to {unwrapped_addr}")
-                        self.delrcpt(addr)
-                        self.addrcpt(f"<{unwrapped_addr}>")
-                        self.mail_to[self.mail_to.index(addr)] = unwrapped_addr
-            if not list_fanout and any((match := listbounce_mailmatch.search(item)) for item in self.mail_to):
-                if self.mail_to[0].rsplit('@', 1)[-1] in rewrite_domain_reverse_map:
-                    unwrapped_addr = self.mail_to[0].rsplit('@', 1)[0].replace('=40', '@')
-                    logging.info(f"{queue_id} unwrap: list bounce unwrapped from {self.mail_to[0]} to {unwrapped_addr}")
 
-                    self.delrcpt(self.mail_to[0])
-                    self.addrcpt(f"<{unwrapped_addr}>")
-                    return Milter.ACCEPT
-                else:
-                    logging.info(f"{queue_id} none: list bounce already unwrapped {self.mail_to[0]}")
-                    return Milter.ACCEPT
+            if list_fanout:
+                self.unwrap_list_bounces(queue_id)
+            if not list_fanout and any(listbounce_mailmatch.search(item) for item in self.mail_to):
+                self.unwrap_list_bounces(queue_id)
+                return Milter.ACCEPT
 
             # scenario 2
             elif test_local_list(self.mail_to):
@@ -302,12 +334,11 @@ class EnvelopeMilter(Milter.Base):
                 if check_dmarc(hdr_from_addr):
                     new_hdr_from_addr = re.sub('@[^@]+$', f'=40{hdr_from_addr.rsplit('@')[-1]}@{forwarding_domain}', hdr_from_addr)
                     update_addr_wrap_log(hdr_from_addr, new_hdr_from_addr)
-                    forwarding_addr = os.environ.get("FORWARDING_ADDR", "forwardingalgorithm@myaddr.com")
                     self.chgfrom(forwarding_addr)
                     self.chgheader(
                         "From",
                         0,
-                        f'"{_hdr_from_name}" <{new_hdr_from_addr}>',
+                        format_from_header(_hdr_from_name, new_hdr_from_addr),
                     )
                     logging.info(
                         f"{queue_id} rewrite-both: Envelope-From changed from {env_from_addr} to {forwarding_addr}, header-from changed {hdr_from_addr} to {new_hdr_from_addr} [{self.id}]"
@@ -349,7 +380,7 @@ class EnvelopeMilter(Milter.Base):
                     self.chgheader(
                         "From",
                         0,
-                        f'"{_hdr_from_name}" <{new_hdr_from_addr}>',
+                        format_from_header(_hdr_from_name, new_hdr_from_addr),
                     )
                     update_addr_wrap_log(hdr_from_addr, new_hdr_from_addr)
                     new_forwarding_addr = re.sub('@[^@]+$', f'=40{env_from_addr.rsplit('@')[-1]}@{rewrite_domain}', env_from_addr)
@@ -375,6 +406,10 @@ class EnvelopeMilter(Milter.Base):
 
         except TypeError as e:
             logging.info(f"{queue_id} error: writing log: {e} [{self.id}]")
+        except psycopg.OperationalError as e:
+            logging.info(f"{queue_id} error: database unavailable: {e} [{self.id}]")
+            self.setreply("451", "4.3.0", "backend unavailable")
+            return Milter.TEMPFAIL
         return Milter.CONTINUE
 
 
@@ -382,7 +417,7 @@ def main():
     timeout = 600
 
     Milter.factory = EnvelopeMilter
-    Milter.set_flags(Milter.ADDHDRS | Milter.CHGFROM | Milter.CHGHDRS)
+    Milter.set_flags(Milter.ADDHDRS | Milter.CHGFROM | Milter.CHGHDRS | Milter.ADDRCPT | Milter.DELRCPT)
 
     def run_milter():
         Milter.runmilter("EnvelopeMilter", "inet:" + milter_listening_port, timeout)
@@ -404,11 +439,11 @@ def main():
 
 if __name__ == "__main__":
     logging.info(
-        f"info: Starting, milter interface listneing on {milter_listening_port}"
+        f"info: Starting, milter interface listening on {milter_listening_port}"
     )
-    logging.info(f"info: http interface listneing on {http_listening_port}")
+    logging.info(f"info: http interface listening on {http_listening_port}")
     logging.info(f"info: Local domains are: {local_domains}")
-    logging.info(f"info: logging rotation perdiod is {logging_rotate_period}")
+    logging.info(f"info: logging rotation period is {logging_rotate_period}")
 
     main()
 
