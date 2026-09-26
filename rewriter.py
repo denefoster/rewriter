@@ -152,7 +152,11 @@ def _check_dmarc_uncached(domain):
     dmarc_status = checkdmarc.check_dmarc(domain, timeout=1.0, timeout_retries=2)
     logging.debug(f"dmarc status is {dmarc_status}")
     if "tags" in dmarc_status:
-        return any(x in dmarc_status["tags"]["p"]["value"] for x in matches)
+        # a record found on a parent (organisational) domain governs this
+        # domain as a subdomain, so sp= applies; checkdmarc defaults sp to p
+        location = (dmarc_status.get("location") or domain).rstrip(".").lower()
+        tag = "p" if location == domain else "sp"
+        return dmarc_status["tags"][tag]["value"] in matches
     if "timed out" in dmarc_status.get("error", "").lower():
         return None
     return False
@@ -267,13 +271,19 @@ class EnvelopeMilter(Milter.Base):
         self.mail_to = []
         self.header_from = None
         self.header_to = None
-        self.mail_from = f.lower()
+        # addresses keep their case: local parts (SRS, VERP) can be case
+        # sensitive and delrcpt() must name the recipient exactly as given;
+        # internal_addr() gives the lowercased form for comparisons
+        self.mail_from = f
         return Milter.CONTINUE
 
     def envrcpt(self, to, *str):
-        lower_to = to.lower()
-        self.mail_to.append(email.utils.parseaddr(lower_to)[1])
+        self.mail_to.append(email.utils.parseaddr(to)[1])
         return Milter.CONTINUE
+
+    def rcpt_keys(self):
+        # recipients as the lowercased, unquoted keys used in the database
+        return [internal_addr(addr) for addr in self.mail_to]
 
     def header(self, name, value):
         if name.lower() == "from":
@@ -308,6 +318,7 @@ class EnvelopeMilter(Milter.Base):
             self.mail_to[i] = unwrapped_addr
 
     def eom(self):
+        queue_id = None
         try:
             queue_id = self.getsymval('i') # queue id
             logging.debug(
@@ -376,12 +387,12 @@ class EnvelopeMilter(Milter.Base):
                 return Milter.ACCEPT
 
             # scenario 2
-            elif test_local_list(self.mail_to):
+            elif test_local_list(self.rcpt_keys()):
                 logging.info(
                     f"{queue_id} none: Local list recipient, no action needed Envelope-To: {self.mail_to} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 return Milter.ACCEPT
-            elif test_virtual_alias(self.mail_to):
+            elif test_virtual_alias(self.rcpt_keys()):
                 logging.debug(
                     f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {self.mail_to} Header-To: {hdr_to_addr} [{self.id}]"
                 )
@@ -424,12 +435,12 @@ class EnvelopeMilter(Milter.Base):
                 logging.debug(f"{queue_id} debug: rewrite_domains are {rewrite_domain_map} [{self.id}]")
                 logging.debug(f"{queue_id} debug: header from name is {_hdr_from_name} [{self.id}]")
                 try:
-                    rewrite_domain = rewrite_domain_map[env_from_addr.rsplit("@", 1)[-1]]
+                    rewrite_domain = rewrite_domain_map[env_from_addr.rsplit("@", 1)[-1].lower()]
                 except KeyError:
                     rewrite_domain = forwarding_domain
                 logging.info(f"rewrite domain is {rewrite_domain}")
                 # an ignored subscriber must not exempt a whole mailman batch
-                if not list_fanout and ignore_list & set(self.mail_to):
+                if not list_fanout and ignore_list & set(self.rcpt_keys()):
                     logging.info(
                         f"{queue_id} none: Envelope To {self.mail_to} contains an ignore list entry"
                     )
@@ -465,11 +476,15 @@ class EnvelopeMilter(Milter.Base):
                     )
                 return Milter.ACCEPT
 
-        except TypeError as e:
-            logging.info(f"{queue_id} error: writing log: {e} [{self.id}]")
         except psycopg.OperationalError as e:
             logging.info(f"{queue_id} error: database unavailable: {e} [{self.id}]")
             self.setreply("451", "4.3.0", "backend unavailable")
+            return Milter.TEMPFAIL
+        except Exception:
+            # TEMPFAIL drops any changes already made, so a half-rewritten
+            # message is never accepted; the sender retries later
+            logging.exception(f"{queue_id} error: unexpected failure [{self.id}]")
+            self.setreply("451", "4.3.0", "rewriter internal error")
             return Milter.TEMPFAIL
         return Milter.CONTINUE
 
