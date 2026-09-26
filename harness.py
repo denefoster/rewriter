@@ -21,6 +21,16 @@ recipient changes and database writes.
   # a recipient on the ignore list (overrides IGNORELIST; repeatable)
   ./harness.py --from alice@yahoo.com --to alldanes@lists.sys.slush.ca --ignore alldanes@lists.sys.slush.ca
 
+  # a quoted local part: wrapped as "john smith=40example.com"@<FORWARDING_DOMAIN>
+  ./harness.py --from '"john smith"@example.com' --to bob@example.net --dmarc example.com=reject
+
+  # ...and the reply to it being unwrapped (--virtual takes the unquoted form)
+  ./harness.py --from bob@example.net --to '"john smith=40example.com"@dmarc.ietf.org' \
+      --virtual 'john smith=40example.com@dmarc.ietf.org'
+
+  # a bounce (null sender): the From header may be rewritten, the envelope stays <>
+  ./harness.py -f '' --from MAILER-DAEMON@example.com --to bob@example.net --dmarc example.com=reject
+
   # a bounce coming back to a wrapped list address
   ./harness.py --from MAILER-DAEMON@example.com --to ietf-bounces=40ietf.org@dmarc.ietf.org
 
