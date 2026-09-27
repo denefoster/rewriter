@@ -171,6 +171,45 @@ def test_round_trip(run, original, wrapped, key, unwrapped):
     assert back["recipients"] == [unwrapped]
 
 
+# --- header From unwrapped along with the recipient ------------------------------
+
+@pytest.mark.parametrize("original, wrapped, key, unwrapped", CASES)
+def test_wrapped_header_from_unwraps(run, original, wrapped, key, unwrapped):
+    report = run("--from", wrapped, "--to", wrapped, "--virtual", key)
+    assert report["result"] == "ACCEPT"
+    assert report["recipients"] == [unwrapped]
+    assert email.utils.parseaddr(report["header_from"])[1] == unwrapped
+
+
+def test_wrapped_header_from_keeps_display_name(run):
+    report = run("--from", f'"Smith, Alice" <alice=40example.com@{FWD}>',
+                 "--to", f"bob=40other.test@{FWD}")
+    assert report["header_from"] == '"Smith, Alice" <alice@example.com>'
+
+
+def test_unwrapped_header_from_untouched(run):
+    report = run("--from", SENDER, "--to", f"alice=40example.com@{FWD}")
+    assert report["header_from"] == SENDER
+    assert not [a for a in report["milter_actions"] if a[0] == "chgheader"]
+
+
+def test_unwrapped_header_from_rewrapped_for_alias(run):
+    """An alias alongside the wrapped recipient sees the real From domain,
+    so a p=reject sender is wrapped again for it."""
+    report = run("--from", f"alice=40example.com@{FWD}",
+                 "--to", f"bob=40other.test@{FWD}", "alias@ietf.org",
+                 "--virtual", "alias@ietf.org", "--dmarc", "example.com=reject")
+    assert [a[3] for a in report["milter_actions"] if a[0] == "chgheader"] == [
+        "alice@example.com", f"alice=40example.com@{FWD}"]
+    assert report["recipients"] == ["alias@ietf.org", "bob@other.test"]
+
+
+def test_wrapped_header_from_alone_not_unwrapped(run):
+    """Only a message to a wrapped recipient unwraps the From."""
+    report = run("--from", f"alice=40example.com@{FWD}", "--to", "carol@elsewhere.test")
+    assert report["header_from"] == f"alice=40example.com@{FWD}"
+
+
 # --- recipients that look wrapped but aren't ------------------------------------
 
 @pytest.mark.parametrize("rcpt", [

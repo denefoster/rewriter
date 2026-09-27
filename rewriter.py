@@ -339,6 +339,15 @@ class EnvelopeMilter(Milter.Base):
             self.addrcpt(f"<{unwrapped_addr}>")
             self.mail_to[i] = unwrapped_addr
 
+    def unwrap_header_from(self, hdr_from_name, hdr_from_addr, queue_id):
+        # a From: we wrapped on the way out has come back to us; restore it
+        if not hdr_from_addr or not is_wrapped(hdr_from_addr):
+            return hdr_from_addr
+        unwrapped_addr = unwrap_addr(hdr_from_addr)
+        self.chgheader("From", 0, format_from_header(hdr_from_name, unwrapped_addr))
+        logging.info(f"{queue_id} unwrap: header-From unwrapped from {hdr_from_addr} to {unwrapped_addr} [{self.id}]")
+        return unwrapped_addr
+
     def eom(self):
         queue_id = None
         try:
@@ -397,6 +406,7 @@ class EnvelopeMilter(Milter.Base):
                             self.mail_to[i] = unwrapped_addr
                 # other recipients (e.g. a virtual alias on CC) still need
                 # the checks below
+                hdr_from_addr = self.unwrap_header_from(_hdr_from_name, hdr_from_addr, queue_id)
                 if only_wrapped and not list_fanout:
                     return Milter.ACCEPT
 
