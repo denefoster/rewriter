@@ -101,4 +101,18 @@ def test_bounce_alongside_reply(run):
                  f"alice=40example.com@{FWD}",
                  "--virtual", f"alice=40example.com@{FWD}")
     assert sorted(report["recipients"]) == ["alice@example.com", "ietf-bounces+a=x.test@ietf.org"]
-    assert len(reply_lookups(report)) == 1
+    # alice's wrap is looked up at RCPT and again among the To:/Cc: wraps;
+    # the list bounce never is
+    assert len(reply_lookups(report)) == 2
+
+
+@pytest.mark.parametrize("env_from", MAILMAN_SENDERS)
+def test_fanout_records_no_envelope_wrap(run, env_from):
+    # unwrap_list_bounces() restores a wrapped list bounce without a record
+    report = run("--list", "ietf@ietf.org", "-f", env_from,
+                 "--from", "alice@example.com", "--dmarc", "example.com=reject",
+                 "--to", "a@x.test")
+    local = env_from.rpartition("@")[0]
+    assert report["envelope_from"] == f"{local}=40ietf.org@{FWD}"
+    # only the header From's wrap, which replies need
+    assert [w["email"] for w in report["db_writes"]] == [f"alice=40example.com@{FWD}"]
