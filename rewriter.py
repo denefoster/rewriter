@@ -411,7 +411,8 @@ class EnvelopeMilter(Milter.Base):
     def unwrap_from_headers(self, queue_id):
         # as postconfirm's dmarc-reverse, the wrapped addresses in To:/Cc:
         # are delivered to and restored there; unlike it, the envelope
-        # recipients are kept too, so a Bcc'd wrap still gets its copy
+        # recipients are kept too, so a Bcc'd wrap still gets its copy.
+        # Returns the unwrapped recipients it added
         header_addrs = [addr for _field, value in self.addr_headers
                         for _name, addr in email.utils.getaddresses([value])
                         if addr and is_wrapped(addr)]
@@ -449,6 +450,7 @@ class EnvelopeMilter(Milter.Base):
             if new_value is not None:
                 self.chgheader(name, idx, new_value)
                 logging.info(f"{queue_id} unwrap: header-{name} changed from {value} to {new_value} [{self.id}]")
+        return added
 
     def rewrite_forwarded(self, hdr_from_name, hdr_from_addr, env_from_addr, queue_id):
         # a message we pass on from someone else's domain (alias forward,
@@ -498,16 +500,18 @@ class EnvelopeMilter(Milter.Base):
 
             # scenario 1
             if any(is_wrapped(item) for item in self.mail_to):
-                only_wrapped = all(is_wrapped(item) for item in self.mail_to)
                 logging.debug(
                     f"debug: Header from: {hdr_from_addr} is remote, Header To: {hdr_to_addr} is wrapped local [{self.id}]"
                 )
-                self.unwrap_from_headers(queue_id)
-                # other recipients (e.g. a virtual alias on CC) still need
-                # the checks below
-                if only_wrapped and not list_fanout:
-                    # we forward the reply from our IPs, so the replier's SPF
-                    # fails and their DKIM rarely survives the To:/Cc: rewrite
+                added = self.unwrap_from_headers(queue_id)
+                # we forward to the unwrapped addresses from our IPs, so the
+                # replier's SPF fails and their DKIM rarely survives the
+                # To:/Cc: rewrite.  Milter changes apply to every copy, so a
+                # local list or ignored recipient alongside is rewritten too
+                # (lmtp_generic_maps restores the From for mailman)
+                if added and not list_fanout:
+                    # a wrapped list bounce may share the message
+                    self.unwrap_list_bounces(queue_id)
                     self.rewrite_forwarded(_hdr_from_name, hdr_from_addr, env_from_addr, queue_id)
                     return Milter.ACCEPT
 
