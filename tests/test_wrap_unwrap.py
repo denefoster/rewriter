@@ -383,14 +383,14 @@ def test_reply_with_ignored_recipient_rewrites_from(run):
     assert report["header_from"] == f"bob=40yahoo.test@{FWD}"
 
 
-def test_reply_to_duplicate_wrap_not_rewritten(run):
+def test_reply_to_duplicate_wrap_left_to_usual_checks(run):
     """A wrap of a recipient already on the message adds no one, so scenario 1
-    doesn't decide; alice's own copy is left to the usual checks."""
+    doesn't decide; alice is then an off-site recipient alongside the list."""
     report = run("--from", "bob@yahoo.test", "--dmarc", "yahoo.test=reject",
                  "--to", "ietf@ietf.org", ALICE, "alice@example.com",
                  "--virtual", ALICE)
     assert report["recipients"] == ["ietf@ietf.org", "alice@example.com"]
-    assert report["header_from"] == "bob@yahoo.test"
+    assert report["header_from"] == f"bob=40yahoo.test@{FWD}"
 
 
 # --- recipients that look wrapped but aren't ------------------------------------
