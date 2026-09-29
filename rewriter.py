@@ -536,8 +536,9 @@ class EnvelopeMilter(Milter.Base):
             # scenario 2
             # an alias forwards off-site, so it needs the rewrite even when a
             # list shares the message; lmtp_generic_maps restores the From
-            # on the copy delivered to mailman
-            elif test_virtual_alias(self.rcpt_keys()):
+            # on the copy delivered to mailman.  An ignored alias wants the
+            # original From, so it doesn't count
+            elif test_virtual_alias([k for k in self.rcpt_keys() if k not in ignore_list]):
                 logging.debug(
                     f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {self.mail_to} Header-To: {hdr_to_addr} [{self.id}]"
                 )
