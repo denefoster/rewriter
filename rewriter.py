@@ -524,16 +524,19 @@ class EnvelopeMilter(Milter.Base):
                 return Milter.ACCEPT
 
             # scenario 2
-            elif test_local_list(self.rcpt_keys()):
-                logging.info(
-                    f"{queue_id} none: Local list recipient, no action needed Envelope-To: {self.mail_to} Header-To: {hdr_to_addr} [{self.id}]"
-                )
-                return Milter.ACCEPT
+            # an alias forwards off-site, so it needs the rewrite even when a
+            # list shares the message; lmtp_generic_maps restores the From
+            # on the copy delivered to mailman
             elif test_virtual_alias(self.rcpt_keys()):
                 logging.debug(
                     f"{queue_id} debug: Virtual address recipient, check if rewrite needed Envelope-To: {self.mail_to} Header-To: {hdr_to_addr} [{self.id}]"
                 )
                 self.rewrite_forwarded(_hdr_from_name, hdr_from_addr, env_from_addr, queue_id)
+                return Milter.ACCEPT
+            elif test_local_list(self.rcpt_keys()):
+                logging.info(
+                    f"{queue_id} none: Local list recipient, no action needed Envelope-To: {self.mail_to} Header-To: {hdr_to_addr} [{self.id}]"
+                )
                 return Milter.ACCEPT
             # scenario 3
             if check_local(env_from_addr) and check_local(hdr_from_addr):

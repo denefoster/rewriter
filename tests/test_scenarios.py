@@ -44,6 +44,23 @@ def test_alias_dmarc(run):
     assert [w["email"] for w in report["db_writes"]] == [WRAPPED]
 
 
+def test_alias_alongside_list_rewritten(run):
+    """The alias forwards off-site, so a list sharing the message must not
+    leave its copy failing DMARC; Postfix's lmtp_generic_maps restores the
+    From on the copy delivered to mailman."""
+    report = run("--from", SENDER, *REJECT, "--to", "ietf@ietf.org", "alias@ietf.org",
+                 "--virtual", "alias@ietf.org")
+    assert report["envelope_from"] == FORWARDING_ADDR
+    assert report["header_from"] == WRAPPED
+    assert [w["email"] for w in report["db_writes"]] == [WRAPPED]
+
+
+def test_alias_alongside_list_no_policy_untouched(run):
+    report = run("--from", SENDER, "--dmarc", "example.com=none",
+                 "--to", "ietf@ietf.org", "alias@ietf.org", "--virtual", "alias@ietf.org")
+    assert untouched(report)
+
+
 def test_alias_spf_only(run):
     report = run("-f", "bounces@mailer.example.net", "--from", SENDER,
                  "--spf", "mailer.example.net=-all", *ALIAS)
